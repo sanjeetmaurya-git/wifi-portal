@@ -13,6 +13,11 @@ return new class extends Migration
     {
         Schema::create('wifi_sessions', function (Blueprint $table) {
             $table->id();
+            $table->unsignedBigInteger('user_id');
+            $table->string('mac_address');
+            $table->string('ip_address');
+            $table->timestamp('login_at');
+            $table->timestamp('logout_at')->nullable();
             $table->timestamps();
         });
     }

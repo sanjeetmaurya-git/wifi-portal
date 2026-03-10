@@ -12,3 +12,5 @@ Route::get('/', function () {
 Route::get('/login',[AuthController::class,'loginPage']);
 Route::post('/send-otp',[AuthController::class,'sendOtp']);
 Route::post('/verify-otp',[AuthController::class,'verifyOtp']);
+
+// Route::view('/sucess', 'success');

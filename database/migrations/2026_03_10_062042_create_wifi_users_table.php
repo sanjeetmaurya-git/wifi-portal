@@ -13,6 +13,10 @@ return new class extends Migration
     {
         Schema::create('wifi_users', function (Blueprint $table) {
             $table->id();
+            $table->string('mobile')->unique();
+            $table->string('mac_address')->nullable();
+            $table->string('ip_address')->nullable();
+            $table->boolean('active')->default(true);
             $table->timestamps();
         });
     }
