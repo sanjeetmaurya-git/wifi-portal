@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\WifiUser;
 use App\Models\WifiSession;
 use App\Models\OtpRequest;
+use App\Models\UsageLog;
 use App\Services\MikrotikService;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -101,6 +102,15 @@ class AdminController extends Controller
         return response()->json([
             'success'=>true
         ]);
+    }
+
+    //data usage 
+    public function usageStats()
+    {
+        $stats = UsageLog::with('user')
+        ->latest()
+        ->paginate(20);
+        return view('admin.usage',compact('stats'));
     }
 
 }

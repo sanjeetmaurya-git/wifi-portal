@@ -11,20 +11,20 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::call(function () {
+    $expiredSessions = WifiSession::whereNull('logout_at')
+    ->whereRaw('DATE_ADD(login_at, INTERVAL duration_minutes MINUTE) < NOW()')
+    ->get();
 
-$expiredSessions = WifiSession::whereNull('logout_at')
-->whereRaw('DATE_ADD(login_at, INTERVAL duration_minutes MINUTE) < NOW()')
-->get();
+    $mikrotik = new MikrotikService();
 
-$mikrotik = new MikrotikService();
+    foreach($expiredSessions as $session){
 
-foreach($expiredSessions as $session){
-
-    try{
+        try{
         $mikrotik->removeHotspotUser(
             $session->user->mobile
         );
     }catch(\Exception $e){
+        // router not connected
 
     }
 

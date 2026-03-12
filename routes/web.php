@@ -27,5 +27,5 @@ Route::get('/admin/analytics-data', [AdminController::class,'analyticsData']);
 
 Route::get('/admin/active-sessions', [AdminController::class,'activeSessions']);
 Route::post('/admin/disconnect-user', [AdminController::class,'disconnectUser']);
-
+Route::get('/admin/usage',[AdminController::class,'usageStats']);  //step 11
 

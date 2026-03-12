@@ -111,4 +111,15 @@ class MikrotikService
             return false;
         }
     }
+
+    public function getActiveUsers()
+    {
+        if ($this->isDevelopmentMode()) {
+            return [];
+        }
+
+        $client = $this->getClient();
+        $query = new Query('/ip/hotspot/active/print');
+        return $client->query($query)->read();
+    }
 }
