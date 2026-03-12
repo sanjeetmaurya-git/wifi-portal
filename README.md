@@ -57,3 +57,34 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+
+Step -8 
+# 🚀 WiFi Portal Admin Dashboard
+
+A minimal, clean, and high-performance Admin Panel for managing WiFi users and sessions. Designed with a low-eye-strain Dark UI and 60fps transitions.
+
+## ✨ Features
+- **Modern Dark UI:** Built with the Catppuccin-inspired color palette (#1E1E2E).
+- **User Management:** View and track registered WiFi users.
+- **Session Tracking:** Monitor active sessions, IP addresses, and MAC addresses.
+- **OTP Logs:** Real-time visibility into authentication requests.
+- **Responsive Layout:** Fixed sidebar with a fluid content area.
+
+## 🛠️ Tech Stack
+- **Framework:** Laravel 11.x
+- **Frontend:** Blade Templating + Custom CSS
+- **Database:** MySQL / PostgreSQL
+
+## 🚀 Installation
+1. Clone the repo: `git clone <your-repo-url>`
+2. Install dependencies: `composer install`
+3. Setup `.env`: `cp .env.example .env` (Update DB credentials)
+4. Run migrations: `php artisan migrate`
+5. Serve: `php artisan serve`
+
+## 📸 Dashboard Structure
+- `/admin` - Overview & Analytics
+- `/admin/users` - WiFi User List
+- `/admin/sessions` - Active Session Logs
+- `/admin/otp-logs` - Authentication History

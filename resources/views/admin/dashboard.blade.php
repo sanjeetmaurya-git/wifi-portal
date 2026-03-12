@@ -1,0 +1,154 @@
+@extends('admin.layout')
+@section('content')
+
+<style>
+    .card .card-heading{
+        font-size: 28px;
+        text-align: center;
+        padding: 16px;
+        text-decoration: underline 2px skyblue;
+    }
+</style>
+<h1>Wifi Analytics Dashboard</h1>
+
+
+<div class="card">
+    <h3>Active Users</h3>
+    <!-- <h2>{{ $users }}</h2> -->
+     <h2 id="activeUsers">0</h2>
+</div>
+
+<div class="card">
+    <h3>Active Sessions</h3>
+    <!-- <h2 class="success">{{ $activeSessions }}</h2> -->
+     <h2 id="sessionsToday">0</h2>
+</div>
+
+<div class="card">
+    <h3>OTP Requests</h3>
+    <!-- <h2>{{$otpRequests }}</h2> -->
+    <h2 id="otpToday">0</h2>
+</div>
+
+<div class="card">
+    <h3>Login Activity</h3>
+    <canvas id="loginChart"></canvas>
+</div>
+
+<div class="card">
+    <h3>Total Users</h3>
+    <h2 id="totalUsers">0</h2>
+</div>
+
+<!-- Show Router Status -->
+<div class="card">
+    <h3>Router Status</h3>
+    <span class="success">Online</span>
+</div>
+
+<!-- Show Connected Devices -->
+<div class="card">
+    <h3 class="card-heading">Connected Devices</h3>
+    <table width="100%" id="devicesTable">
+        <thead>
+            <tr>
+                <th>Mobile</th>
+                <th>IP</th>
+                <th>MAC</th>
+                <th>Login Time</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>    </tbody>
+    </table>
+
+</div>
+
+<script>
+
+document.addEventListener("DOMContentLoaded", function() {
+    // analytics data by json api 
+    function loadAnalytics(){
+        fetch('/admin/analytics-data')
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('activeUsers').innerText = data.active_users
+            document.getElementById('sessionsToday').innerText = data.sessions_today
+            document.getElementById('otpToday').innerText = data.otp_today
+            document.getElementById('totalUsers').innerText = data.total_users
+        })
+    }
+    loadAnalytics()
+    // update dasboard every 10 seconds 
+    setInterval(loadAnalytics,10000)
+
+    // login users charts 
+    const ctx = document.getElementById('loginChart').getContext('2d')
+    new Chart(ctx,{
+        type:'line',
+        data:{
+            labels:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+            datasets:[{
+                label:'Logins',
+                data:[12,19,3,5,2,3,9],
+                borderColor:'#89DCEB',
+                tension:0.4
+                }]
+            }
+        })
+    });
+
+    // Load Connected Devices
+    function loadSessions(){
+        fetch('/admin/active-sessions')
+        .then(res=>res.json())
+        .then(data=>{
+            let html = ''
+            data.forEach(session => {
+                html += `
+                <tr>
+                <td>${session.user.mobile}</td>
+                <td>${session.ip_address}</td>
+                <td>${session.mac_address}</td>
+                <td>${session.login_at}</td>
+                <td><button onclick="disconnectUser(${session.id})">Disconnect</button></td>
+                </tr>
+                `
+            })
+            document.querySelector('#devicesTable tbody').innerHTML = html
+        })
+    }
+
+    // Disconnect button function 
+    function disconnectUser(id){
+        fetch('/admin/disconnect-user',{
+            method:'POST',
+            headers:{
+                'Content-Type':'application/json',
+                'X-CSRF-TOKEN':'{{ csrf_token() }}'
+                },
+                body:JSON.stringify({
+                    session_id:id
+                })
+            })
+            .then(res=>res.json())
+            .then(data=>{
+                if(data.success){
+                    alert("User disconnected");
+                    loadSessions();
+                }
+            })
+        }
+
+        //Auto Refresh Sessions
+        loadSessions();
+        setInterval(loadSessions,5000);
+
+
+
+
+
+</script>
+        
+@endsection
+
