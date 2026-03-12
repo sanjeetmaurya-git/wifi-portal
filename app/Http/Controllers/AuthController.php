@@ -84,6 +84,7 @@ class AuthController extends Controller
             'mac_address' => $mac,       // will be replaced by router MAC later
             'ip_address'  => $ip,
             'login_at'    => Carbon::now(),
+            'duration_minutes'=>30, //default login session
         ]);
 
         // Add user to MikroTik Router
