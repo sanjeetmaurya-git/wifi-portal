@@ -33,3 +33,8 @@ Schedule::call(function () {
 }
 
 })->everyMinute();
+
+
+
+// ✅ NEW — daily cleanup of old logs
+Schedule::command('cleanup:data')->daily();

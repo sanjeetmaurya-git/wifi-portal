@@ -113,4 +113,11 @@ class AdminController extends Controller
         return view('admin.usage',compact('stats'));
     }
 
+    // step12 
+    public function systemLogs()
+    {
+        $sessions = WifiSession::latest()->limit(100)->get();
+        return view('admin.logs',compact('sessions'));
+    }
+
 }
