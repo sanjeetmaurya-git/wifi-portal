@@ -12,8 +12,23 @@ use App\Services\MikrotikService;
 class AuthController extends Controller
 {
     // login page
-    public function loginPage()
+    public function loginPage(Request $request)
     {
+        $mac = $request->input('mac', 'unknown');
+
+        // Check if this MAC has an active, non-expired session
+        $activeSession = WifiSession::where('mac_address', $mac)
+                                    ->where('expires_at', '>', Carbon::now())
+                                    ->latest()
+                                    ->first();
+
+        if ($activeSession) {
+            return view('status', [
+                'session' => $activeSession,
+                'mobile'  => $activeSession->user->mobile ?? 'User',
+            ]);
+        }
+
         return view('login');
     }
 
@@ -118,6 +133,7 @@ class AuthController extends Controller
             'browser'          => $browser,
             'os'               => $os,
             'login_at'         => Carbon::now(),
+            'expires_at'       => Carbon::now()->addMinutes(30),
             'duration_minutes' => 30,
         ]);
         
@@ -149,5 +165,24 @@ class AuthController extends Controller
             'link_login'   => $request->input('link_login'),
             'routerSynced' => $routerSynced,
         ]);
+    }
+
+    // disconnect
+    public function disconnect(Request $request)
+    {
+        $mac = $request->mac;
+        $session = WifiSession::where('mac_address', $mac)
+                               ->where('logout_at', null)
+                               ->latest()
+                               ->first();
+
+        if ($session) {
+            $session->update([
+                'logout_at'  => Carbon::now(),
+                'expires_at' => Carbon::now(), // expire immediately
+            ]);
+        }
+
+        return redirect('/hotspot/login?mac=' . $mac)->with('success', 'Disconnected successfully.');
     }
 }

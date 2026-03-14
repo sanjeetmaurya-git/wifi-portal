@@ -35,4 +35,5 @@ Route::get('/admin/system-logs',[AdminController::class,'systemLogs']); //step 1
 Route::get('/hotspot/login', [AuthController::class,'loginPage']);
 Route::post('/hotspot/verify-otp', [AuthController::class,'verifyOtp']);
 Route::post('/hotspot/send-otp', [AuthController::class,'sendOtp']);
+Route::post('/hotspot/disconnect', [AuthController::class, 'disconnect']);
 

@@ -16,6 +16,7 @@ class WifiSession extends Model
         'device_name',
         'browser',
         'os',
+        'expires_at',
     ];
 
     //users info session 
