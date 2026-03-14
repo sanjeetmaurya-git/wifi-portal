@@ -40,8 +40,13 @@ class AuthController extends Controller
         // ]);
 
         echo "Your OTP is: " . $otp;
-
-        return view('verify', compact('mobile'));
+// compact('mobile')
+        return view('verify', [
+            'mobile'=>$mobile,
+            'mac'=>$request->mac,
+            'ip'=>$request->ip,
+            'link_login'=>$request->link_login            
+        ]);
     }
 
     // verify otp
@@ -60,12 +65,11 @@ class AuthController extends Controller
                                 ->where('expires_at', '>', Carbon::now())
                                 ->first();
 
-        // OTP invalid or expired — early return
+        // OTP invalid or expired — redirect back with error
         if (!$otpRecord) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid or Expired OTP.',
-            ], 422);
+            return redirect()->back()
+                ->withInput($request->only('mobile', 'mac', 'ip', 'link_login'))
+                ->with('error', 'Invalid or Expired OTP. Please try again.');
         }
 
         // Mark OTP as verified
@@ -77,8 +81,9 @@ class AuthController extends Controller
         ]);
 
         // Create WiFi session
-        $mac = $request->input('mac','unknown');
-        $ip = $request->ip();
+        // Read MAC and IP from hidden form fields (sent by router)
+        $mac = $request->input('mac', 'unknown');
+        $ip  = $request->input('ip',  $request->ip());  // fallback to server IP if not provided
 
         // Capture device info from User-Agent header
         $agent = $request->header('User-Agent');
@@ -118,18 +123,12 @@ class AuthController extends Controller
             // router not connected yet
         }
 
-        // return "Login Success";
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Internet Access Granted',
-            'router'  => $routerSynced ? 'synced' : 'pending',
-        ], 200);
-        
-        // if($request->otp == session('otp')){
-        //     return "Login Success";
-        // }else{
-        //     return "Invalid Otp";
-        // }
+        // Redirect to success page
+        // If router sent a link_login, pass it to success view for captive portal redirect
+        return view('success', [
+            'mobile'       => $request->mobile,
+            'link_login'   => $request->input('link_login'),
+            'routerSynced' => $routerSynced,
+        ]);
     }
 }

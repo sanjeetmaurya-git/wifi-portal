@@ -14,7 +14,8 @@ Route::get('/login',[AuthController::class,'loginPage']);
 Route::post('/send-otp',[AuthController::class,'sendOtp']);
 Route::post('/verify-otp',[AuthController::class,'verifyOtp']);
 
-// Route::view('/sucess', 'success');
+// Route::view('/success', 'success');
+
 
 //admin dashboard (admin, users-list, sessions, otp-logs)
 Route::get('/admin', [AdminController::class,'dashboard']);
@@ -29,4 +30,9 @@ Route::get('/admin/active-sessions', [AdminController::class,'activeSessions']);
 Route::post('/admin/disconnect-user', [AdminController::class,'disconnectUser']);
 Route::get('/admin/usage',[AdminController::class,'usageStats']);  //step 11
 Route::get('/admin/system-logs',[AdminController::class,'systemLogs']); //step 12
+
+// Step 14 Router/hotspot user login and 
+Route::get('/hotspot/login', [AuthController::class,'loginPage']);
+Route::post('/hotspot/verify-otp', [AuthController::class,'verifyOtp']);
+Route::post('/hotspot/send-otp', [AuthController::class,'sendOtp']);
 
