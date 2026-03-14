@@ -143,10 +143,10 @@
         @csrf
 
         {{-- Carry all router parameters forward --}}
-        <input type="hidden" name="mobile"     value="{{ $mobile }}">
-        <input type="hidden" name="mac"        value="{{ $mac }}">
-        <input type="hidden" name="ip"         value="{{ $ip }}">
-        <input type="hidden" name="link_login" value="{{ $link_login }}">
+        <input type="hidden" name="mobile"     value="{{ old('mobile', $mobile) }}">
+        <input type="hidden" name="mac"        value="{{ old('mac', $mac) }}">
+        <input type="hidden" name="ip"         value="{{ old('ip', $ip) }}">
+        <input type="hidden" name="link_login" value="{{ old('link_login', $link_login) }}">
 
         <label for="otp">Enter 6-digit OTP</label>
         {{-- type="text" so leading zeroes are not stripped --}}

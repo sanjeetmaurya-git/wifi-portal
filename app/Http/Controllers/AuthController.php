@@ -64,7 +64,7 @@ class AuthController extends Controller
                                 ->where('verified',  false)
                                 ->where('expires_at', '>', Carbon::now())
                                 ->first();
-
+        
         // OTP invalid or expired — redirect back with error
         if (!$otpRecord) {
             return redirect()->back()
@@ -90,16 +90,26 @@ class AuthController extends Controller
 
         //detect browser
         $browser = 'Unknown';
-        if(str_contains($agent,'Chrome')) $browser = 'Chrome';
-        elseif(str_contains($agent,'Firefox')) $browser = 'Firefox';
-        elseif(str_contains($agent, 'Safari')) $browser = 'Safari';
+        if(str_contains($agent,'Chrome')) {
+            $browser = 'Chrome';
+        } elseif (str_contains($agent,'Firefox')) {
+            $browser = 'Firefox';
+        } 
+        elseif (str_contains($agent,'Safari')) {
+            $browser = 'Safari';
+        }
 
         $os = 'Unknown';
-        if(str_contains($agent,'Windows')) $os = 'Windows';
-        elseif(str_contains($agent,'Android')) $os = 'Android';    
-        elseif(str_contains($agent, 'iPhone')) $os = 'iOS';
-        elseif(str_contains($agent, 'Linux')) $os = 'Linux';
-
+        if (str_contains($agent,'Windows')) {
+            $os = 'Windows';
+        } elseif (str_contains($agent,'Android')) {
+            $os = 'Android';
+        } elseif (str_contains($agent,'Linux')) {
+            $os = 'Linux';
+        } elseif (str_contains($agent,'iPhone')) {
+            $os = 'iOS';
+        }
+        // Create WiFi session
         WifiSession::create([
             'user_id'          => $user->id,
             'mac_address'      => $mac,
@@ -110,8 +120,8 @@ class AuthController extends Controller
             'login_at'         => Carbon::now(),
             'duration_minutes' => 30,
         ]);
-
-        // Add user to MikroTik Router
+        
+        // Sync user with router
         $routerSynced = false;
 
         try {
@@ -121,6 +131,15 @@ class AuthController extends Controller
             );
         } catch (\Exception $e) {
             // router not connected yet
+        }
+
+        // 🔥 STEP 15 Router Redirect
+        $linkLogin = $request->input('link_login');
+        if ($linkLogin) {
+            $loginUrl = $linkLogin .
+                "?username=" . $request->mobile .
+                "&password=" . $request->otp;
+            return redirect($loginUrl);
         }
 
         // Redirect to success page
