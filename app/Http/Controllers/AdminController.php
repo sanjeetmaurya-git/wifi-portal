@@ -74,7 +74,7 @@ class AdminController extends Controller
         ->with('user')
         ->latest()
         ->get();
-
+        
         return response()->json($sessions);
     }
 
@@ -117,7 +117,7 @@ class AdminController extends Controller
     public function systemLogs()
     {
         $sessions = WifiSession::latest()->limit(100)->get();
-        return view('admin.logs',compact('sessions'));
+        return view('admin.logs', compact('sessions'));
     }
 
 }

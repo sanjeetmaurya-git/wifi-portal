@@ -56,6 +56,9 @@
                 <th>IP</th>
                 <th>MAC</th>
                 <th>Login Time</th>
+                <th>Device</th>
+                <th>Browser</th>
+                <th>OS</th>
                 <th>Action</th>
             </tr>
         </thead>
@@ -100,7 +103,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // Load Connected Devices
     function loadSessions(){
-        fetch('/admin/active-sessions')
+        fetch('{{ url("/admin/active-sessions") }}')
         .then(res=>res.json())
         .then(data=>{
             let html = ''
@@ -111,6 +114,9 @@ document.addEventListener("DOMContentLoaded", function() {
                 <td>${session.ip_address}</td>
                 <td>${session.mac_address}</td>
                 <td>${session.login_at}</td>
+                <td>${session.device_name ?? '-'}</td>
+                <td>${session.browser ?? '-'}</td>
+                <td>${session.os ?? '-'}</td>
                 <td><button onclick="disconnectUser(${session.id})">Disconnect</button></td>
                 </tr>
                 `
@@ -119,9 +125,8 @@ document.addEventListener("DOMContentLoaded", function() {
         })
     }
 
-    // Disconnect button function 
     function disconnectUser(id){
-        fetch('/admin/disconnect-user',{
+        fetch('{{ url("/admin/disconnect-user") }}',{
             method:'POST',
             headers:{
                 'Content-Type':'application/json',

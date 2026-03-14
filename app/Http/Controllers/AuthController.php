@@ -77,14 +77,33 @@ class AuthController extends Controller
         ]);
 
         // Create WiFi session
-        $mac = $request->mac ?? 'unknown';
+        $mac = $request->input('mac','unknown');
         $ip = $request->ip();
+
+        // Capture device info from User-Agent header
+        $agent = $request->header('User-Agent');
+
+        //detect browser
+        $browser = 'Unknown';
+        if(str_contains($agent,'Chrome')) $browser = 'Chrome';
+        elseif(str_contains($agent,'Firefox')) $browser = 'Firefox';
+        elseif(str_contains($agent, 'Safari')) $browser = 'Safari';
+
+        $os = 'Unknown';
+        if(str_contains($agent,'Windows')) $os = 'Windows';
+        elseif(str_contains($agent,'Android')) $os = 'Android';    
+        elseif(str_contains($agent, 'iPhone')) $os = 'iOS';
+        elseif(str_contains($agent, 'Linux')) $os = 'Linux';
+
         WifiSession::create([
-            'user_id'     => $user->id,
-            'mac_address' => $mac,       // will be replaced by router MAC later
-            'ip_address'  => $ip,
-            'login_at'    => Carbon::now(),
-            'duration_minutes'=>30, //default login session
+            'user_id'          => $user->id,
+            'mac_address'      => $mac,
+            'ip_address'       => $ip,
+            'device_name'      => $agent,
+            'browser'          => $browser,
+            'os'               => $os,
+            'login_at'         => Carbon::now(),
+            'duration_minutes' => 30,
         ]);
 
         // Add user to MikroTik Router

@@ -6,7 +6,17 @@ use Illuminate\Database\Eloquent\Model;
 
 class WifiSession extends Model
 {
-    protected $fillable = ['user_id', 'mac_address', 'ip_address', 'login_at'];
+    protected $fillable = [
+        'user_id',
+        'mac_address',
+        'ip_address',
+        'login_at',
+        'logout_at',
+        'duration_minutes',
+        'device_name',
+        'browser',
+        'os',
+    ];
 
     //users info session 
     
