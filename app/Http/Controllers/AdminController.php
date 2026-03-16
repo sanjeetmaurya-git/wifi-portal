@@ -120,4 +120,22 @@ class AdminController extends Controller
         return view('admin.logs', compact('sessions'));
     }
 
+    // step 17 connected with router 
+    public function routerStatus()
+    {
+        try{
+            $mikrotik = new MikrotikService();
+            $mikrotik->connect();
+
+            return response()->json([
+                'status'=>'online'
+            ]);
+        }catch(\Exception $e){
+            
+            return response()->json([
+                'status'=>'offline'
+            ]);
+        }
+    }
+
 }

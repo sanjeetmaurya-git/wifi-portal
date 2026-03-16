@@ -7,6 +7,7 @@ use RouterOS\Query;
 use RouterOS\Config;
 use Exception;
 use Illuminate\Support\Facades\Log;
+use App\Models\Router; //Step 17 
 
 class MikrotikService
 {
@@ -17,21 +18,27 @@ class MikrotikService
 
     private function getClient(): Client
     {
+        $router = Router::where('active', true)->first();
+
+        if (!$router && !$this->isDevelopmentMode()) {
+            throw new Exception("No active router found in database.");
+        }
+
         $config = new Config([
-            'host' => env('MIKROTIK_HOST', '192.168.88.1'),
-            'user' => env('MIKROTIK_USER', 'apiuser'),
-            'pass' => env('MIKROTIK_PASS', 'password'),
-            'port' => (int) env('MIKROTIK_PORT', 8728),
+            'host' => $router ? $router->ip_address : env('MIKROTIK_HOST', '192.168.88.1'),
+            'user' => $router ? $router->username : env('MIKROTIK_USER', 'apiuser'),
+            'pass' => $router ? $router->password : env('MIKROTIK_PASS', 'password'),
+            'port' => $router ? (int) $router->port : (int) env('MIKROTIK_PORT', 8728),
         ]);
 
         return new Client($config);
     }
 
-    public function addHotspotUser(string $mobile, string $password, string $profile = 'default'): bool
+    public function addHotspotUser(string $mobile, string $password, string $profile = 'default', string $rateLimit = null): bool
     {
         // ✅ Development Mode — No Router Needed
         if ($this->isDevelopmentMode()) {
-            Log::info("[MikroTik MOCK] User added → Mobile: $mobile | Profile: $profile");
+            Log::info("[MikroTik MOCK] User added → Mobile: $mobile | Profile: $profile | Rate-Limit: $rateLimit");
             return true;
         }
 
@@ -42,10 +49,14 @@ class MikrotikService
             $query->equal('name',    $mobile);
             $query->equal('password', $password);
             $query->equal('profile',  $profile);
+            
+            if ($rateLimit) {
+                $query->equal('rate-limit', $rateLimit);
+            }
 
             $client->query($query)->read();
 
-            Log::info("[MikroTik] User created successfully → $mobile");
+            Log::info("[MikroTik] User created successfully → $mobile (Rate-Limit: $rateLimit)");
             return true;
 
         } catch (Exception $e) {
@@ -118,8 +129,24 @@ class MikrotikService
             return [];
         }
 
-        $client = $this->getClient();
-        $query = new Query('/ip/hotspot/active/print');
-        return $client->query($query)->read();
+        try {
+            $client = $this->getClient();
+            $query = new Query('/ip/hotspot/active/print');
+            return $client->query($query)->read();
+        } catch (Exception $e) {
+            Log::error("[MikroTik ERROR] getActiveUsers failed → " . $e->getMessage());
+            return [];
+        }
+    }
+
+    // Connect to router for status check
+    public function connect()
+    {
+        if ($this->isDevelopmentMode()) {
+            // Return a dummy client or just null if we handle it in controller
+            return true; 
+        }
+
+        return $this->getClient();
     }
 }

@@ -11,9 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('routers', function (Blueprint $table) {
-            $table->id();
-            $table->timestamps();
+        Schema::table('wifi_plans', function (Blueprint $table) {
+            //
         });
     }
 
@@ -22,6 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('routers');
+        Schema::table('wifi_plans', function (Blueprint $table) {
+            //
+        });
     }
 };

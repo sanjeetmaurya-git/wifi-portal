@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class WifiSession extends Model
 {
+    protected $table = 'wifi_sessions';
+
     protected $fillable = [
         'user_id',
         'mac_address',

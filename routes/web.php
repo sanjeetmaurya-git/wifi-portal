@@ -37,3 +37,6 @@ Route::post('/hotspot/verify-otp', [AuthController::class,'verifyOtp']);
 Route::post('/hotspot/send-otp', [AuthController::class,'sendOtp']);
 Route::post('/hotspot/disconnect', [AuthController::class, 'disconnect']);
 
+// Step 17 connected with router
+Route::get('/admin/router-status',[AdminController::class,'routerStatus']);
+

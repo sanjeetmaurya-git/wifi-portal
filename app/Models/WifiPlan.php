@@ -6,5 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 
 class WifiPlan extends Model
 {
-    //
+    protected $fillable = [
+        'name',
+        'price',
+        'duration_minutes',
+        'upload_limit',
+        'download_limit',
+        'is_active'
+    ];
 }

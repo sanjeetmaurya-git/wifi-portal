@@ -11,14 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('wifi_plans', function (Blueprint $table) {
+        Schema::create('routers', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->decimal('price', 8, 2)->default(0);
-            $table->integer('duration_minutes');
-            $table->string('upload_limit')->nullable(); // e.g. 1M
-            $table->string('download_limit')->nullable(); // e.g. 2M
-            $table->boolean('is_active')->default(true);
+            $table->string('ip_address');
+            $table->string('username');
+            $table->string('password');
+            $table->integer('port')->default(8728);
+            $table->boolean('active')->default(true);
             $table->timestamps();
         });
     }
@@ -28,6 +28,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('wifi_plans');
+        Schema::dropIfExists('routers');
     }
 };

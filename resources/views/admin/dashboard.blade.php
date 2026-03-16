@@ -43,7 +43,7 @@
 <!-- Show Router Status -->
 <div class="card">
     <h3>Router Status</h3>
-    <span class="success">Online</span>
+    <span id="routerStatus" class="warning">Checking...</span>
 </div>
 
 <!-- Show Connected Devices -->
@@ -84,6 +84,23 @@ document.addEventListener("DOMContentLoaded", function() {
     loadAnalytics()
     // update dasboard every 10 seconds 
     setInterval(loadAnalytics,10000)
+
+    function loadRouterStatus(){
+        fetch('/admin/router-status')
+        .then(res=>res.json())
+        .then(data=>{
+            const el = document.getElementById('routerStatus');
+            el.innerText = data.status.toUpperCase();
+            el.className = data.status === 'online' ? 'success' : 'danger';
+        })
+        .catch(err => {
+            const el = document.getElementById('routerStatus');
+            el.innerText = 'ERROR';
+            el.className = 'danger';
+        });
+    }
+    loadRouterStatus();
+    setInterval(loadRouterStatus, 30000);
 
     // login users charts 
     const ctx = document.getElementById('loginChart').getContext('2d')

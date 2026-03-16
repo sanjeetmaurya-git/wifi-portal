@@ -57,10 +57,10 @@ class AuthController extends Controller
         echo "Your OTP is: " . $otp;
 // compact('mobile')
         return view('verify', [
-            'mobile'=>$mobile,
-            'mac'=>$request->mac,
-            'ip'=>$request->ip,
-            'link_login'=>$request->link_login            
+            'mobile'     => $mobile,
+            'mac'        => $request->input('mac'),
+            'ip'         => $request->input('ip') ?? $request->ip(),
+            'link_login' => $request->input('link_login')
         ]);
     }
 
@@ -95,10 +95,9 @@ class AuthController extends Controller
             'mobile' => $request->mobile
         ]);
 
-        // Create WiFi session
         // Read MAC and IP from hidden form fields (sent by router)
-        $mac = $request->input('mac', 'unknown');
-        $ip  = $request->input('ip',  $request->ip());  // fallback to server IP if not provided
+        $mac = $request->input('mac') ?: '00:00:00:00:00:00';
+        $ip  = $request->input('ip')  ?: $request->ip();
 
         // Capture device info from User-Agent header
         $agent = $request->header('User-Agent');
@@ -125,17 +124,41 @@ class AuthController extends Controller
             $os = 'iOS';
         }
         // Create WiFi session
-        WifiSession::create([
-            'user_id'          => $user->id,
-            'mac_address'      => $mac,
-            'ip_address'       => $ip,
-            'device_name'      => $agent,
-            'browser'          => $browser,
-            'os'               => $os,
-            'login_at'         => Carbon::now(),
-            'expires_at'       => Carbon::now()->addMinutes(30),
-            'duration_minutes' => 30,
-        ]);
+        try {
+            // 🔥 STEP 18: Get Default Free Plan
+            $plan = \App\Models\WifiPlan::where('name', 'Free Plan')->where('is_active', true)->first();
+            
+            // Fallback if seeder hasn't run
+            $duration = $plan ? $plan->duration_minutes : 30;
+            $rateLimit = $plan ? ($plan->upload_limit . '/' . $plan->download_limit) : null;
+
+            \App\Models\WifiSession::create([
+                'user_id'          => $user->id,
+                'wifi_plan_id'     => $plan ? $plan->id : null,
+                'mac_address'      => $mac,
+                'ip_address'       => $ip,
+                'device_name'      => $agent,
+                'browser'          => $browser,
+                'os'               => $os,
+                'login_at'         => Carbon::now(),
+                'expires_at'       => Carbon::now()->addMinutes($duration),
+                'duration_minutes' => $duration,
+            ]);
+        } catch (\Throwable $e) {
+            // ... (rest of catch remains same)
+            logger()->error("WifiSession creation failed: " . $e->getMessage(), [
+                'exception' => get_class($e),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+                'data' => [
+                    'user_id' => $user->id,
+                    'mac' => $mac,
+                    'ip' => $ip,
+                ]
+            ]);
+            throw $e;
+        }
         
         // Sync user with router
         $routerSynced = false;
@@ -143,7 +166,9 @@ class AuthController extends Controller
         try {
             $routerSynced = $mikrotik->addHotspotUser(
                 $request->mobile,
-                $request->otp
+                $request->otp,
+                'default',
+                $rateLimit ?? null
             );
         } catch (\Exception $e) {
             // router not connected yet
@@ -170,8 +195,12 @@ class AuthController extends Controller
     // disconnect
     public function disconnect(Request $request)
     {
-        $mac = $request->mac;
-        $session = WifiSession::where('mac_address', $mac)
+        $mac = $request->input('mac');
+        if (!$mac) {
+            return redirect('/hotspot/login')->with('error', 'MAC address is required to disconnect.');
+        }
+
+        $session = \App\Models\WifiSession::where('mac_address', $mac)
                                ->where('logout_at', null)
                                ->latest()
                                ->first();
