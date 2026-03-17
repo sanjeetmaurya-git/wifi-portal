@@ -3,15 +3,15 @@
 
 <h1>Sessions</h1>
 <table width="100%">
-    <th>
+    <thead>
         <th>User</th>
         <th>IP</th>
         <th>MAC</th>
         <th>Login Time</th>
-    </th>
+    </thead>
     <tbody>
         @foreach ($sessions  as $s )
-        <tr>
+        <tr style="text-align: center;">
             <td>{{ $s->user_id }}</td>
             <td>{{ $s->ip_address }}</td>
             <td>{{ $s->mac_address }}</td>

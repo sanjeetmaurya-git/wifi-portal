@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\admin\PlanController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -39,4 +40,21 @@ Route::post('/hotspot/disconnect', [AuthController::class, 'disconnect']);
 
 // Step 17 connected with router
 Route::get('/admin/router-status',[AdminController::class,'routerStatus']);
+
+// Step 20 Admin create wifi_plans
+// Route::prefix('admin')->group(function () {
+//     Route::get('/plans', [PlanController::class, 'index']); //see existing plan 
+//     Route::get('/plans/create', [PlanController::class, 'create']);  //create new plan  
+//     Route::post('/plans', [PlanController::class, 'store']); //store new plan   
+// });
+Route::prefix('admin')->group(function () {
+    Route::get('/plans', [PlanController::class, 'index']);
+    Route::get('/plans/create', [PlanController::class, 'create']);
+    Route::post('/plans', [PlanController::class, 'store']);
+
+    // 👇 ADD THESE
+    Route::get('/plans/{id}/edit', [PlanController::class, 'edit']);
+    Route::put('/plans/{id}', [PlanController::class, 'update']);
+    Route::delete('/plans/{id}', [PlanController::class, 'destroy']);
+});
 

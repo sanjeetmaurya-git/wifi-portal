@@ -12,6 +12,8 @@ class WifiPlan extends Model
         'duration_minutes',
         'upload_limit',
         'download_limit',
+        'data_limit_mb',
+        'validity_type',
         'is_active'
     ];
 }

@@ -115,6 +115,8 @@
         <a href="/admin/users">Users</a>
         <a href="/admin/sessions">Sessions</a>
         <a href="/admin/otp-logs">OTP Logs</a>
+        <a href="/admin/plans/">Plan</a>
+        <!-- <a href="/admin/plans">Plans</a> -->
     </div>
     <!-- header of admin dashboard  -->
     <div class="header">
