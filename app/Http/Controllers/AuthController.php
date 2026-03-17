@@ -9,6 +9,8 @@ use App\Models\WifiUser;
 use App\Models\WifiSession;
 use App\Services\MikrotikService;
 
+use function Symfony\Component\Clock\now;
+
 class AuthController extends Controller
 {
     // login page
@@ -88,12 +90,13 @@ class AuthController extends Controller
         }
 
         // Mark OTP as verified
-        $otpRecord->update(['verified' => true]);
+        $otpRecord->update(['verified' => true]);       
 
         // Create or get WiFi user
         $user = WifiUser::firstOrCreate([
             'mobile' => $request->mobile
         ]);
+        $user->update(['last_verified_at' => now()]);
 
         // Read MAC and IP from hidden form fields (sent by router)
         $mac = $request->input('mac') ?: '00:00:00:00:00:00';
@@ -214,4 +217,54 @@ class AuthController extends Controller
 
         return redirect('/hotspot/login?mac=' . $mac)->with('success', 'Disconnected successfully.');
     }
+
+    // Step 19 HotSpot Login 
+    public function hotspotLogin(Request $request)
+    {
+        $mac = $request->mac;
+        $ip  = $request->ip;
+
+        // Step 1: Find existing session by MAC
+        $session = WifiSession::where('mac_address', $mac)
+        ->latest()
+        ->first();
+
+        if(!$session){
+            return view('login', compact('mac','ip'));
+        }
+
+        $user = $session->user;
+
+        // Step 2: Check 15 days rule
+
+        if(!$user->last_verified_at || $user->last_verified_at->diffInDays(now()) > 15){
+            return view('login', compact('mac','ip'));
+        }
+
+        // Step 3: Check active session
+        // $isActive = now()->diffInMinutes($session->login_at) < $session->duration_minutes;
+        $isActive = $session->expires_at > now();
+
+        if($isActive){
+
+            // AUTO LOGIN
+            return $this->redirectToRouter($user, $request);
+        }
+
+        // Step 4: Plan expired → show plans
+        return view('plans', compact('mac','ip'));
+    }
+
+    //Step 19 redirect to Login page 
+    private function redirectToRouter($user, $request)
+    {
+        $link = $request->link_login;
+        if(!$link){
+            return "Connected (Dev Mode)";
+        }
+
+        return redirect($link . "?username=".$user->mobile. "&password=".$user->mobile);
+    }
+
+
 }
