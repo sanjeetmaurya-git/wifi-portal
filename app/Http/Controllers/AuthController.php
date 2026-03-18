@@ -9,7 +9,7 @@ use App\Models\WifiUser;
 use App\Models\WifiSession;
 use App\Services\MikrotikService;
 
-use function Symfony\Component\Clock\now;
+// // use function Symfony\Component\Clock\now;
 
 class AuthController extends Controller
 {
@@ -60,6 +60,7 @@ class AuthController extends Controller
 // compact('mobile')
         return view('verify', [
             'mobile'     => $mobile,
+            'otp'        => $otp, // Pass OTP for development
             'mac'        => $request->input('mac'),
             'ip'         => $request->input('ip') ?? $request->ip(),
             'link_login' => $request->input('link_login')
@@ -67,45 +68,174 @@ class AuthController extends Controller
     }
 
     // verify otp
+    // public function verifyOtp(Request $request, MikrotikService $mikrotik)
+    // {
+    //     // Validate request
+    //     $request->validate([
+    //         'mobile' => 'required|digits:10',
+    //         'otp'    => 'required|digits:6',
+    //     ]);
+
+    //     // Find valid OTP
+    //     $otpRecord = OtpRequest::where('mobile',     $request->mobile)
+    //                             ->where('otp_code',  $request->otp)
+    //                             ->where('verified',  false)
+    //                             ->where('expires_at', '>', Carbon::now())
+    //                             ->first();
+        
+    //     // OTP invalid or expired — redirect back with error
+    //     if (!$otpRecord) {
+    //         return redirect()->back()
+    //             ->withInput($request->only('mobile', 'mac', 'ip', 'link_login'))
+    //             ->with('error', 'Invalid or Expired OTP. Please try again.');
+    //     }
+
+    //     // Mark OTP as verified
+    //     $otpRecord->update(['verified' => true]);       
+
+    //     // Create or get WiFi user
+    //     $user = WifiUser::firstOrCreate([
+    //         'mobile' => $request->mobile
+    //     ]);
+    //     $user->update(['last_verified_at' => now()]);
+
+    //     // Read MAC and IP from hidden form fields (sent by router)
+    //     $mac = $request->input('mac') ?: '00:00:00:00:00:00';
+    //     $ip  = $request->input('ip')  ?: $request->ip();
+
+    //     // Capture device info from User-Agent header
+    //     $agent = $request->header('User-Agent');
+
+    //     //detect browser
+    //     $browser = 'Unknown';
+    //     if(str_contains($agent,'Chrome')) {
+    //         $browser = 'Chrome';
+    //     } elseif (str_contains($agent,'Firefox')) {
+    //         $browser = 'Firefox';
+    //     } 
+    //     elseif (str_contains($agent,'Safari')) {
+    //         $browser = 'Safari';
+    //     }
+
+    //     $os = 'Unknown';
+    //     if (str_contains($agent,'Windows')) {
+    //         $os = 'Windows';
+    //     } elseif (str_contains($agent,'Android')) {
+    //         $os = 'Android';
+    //     } elseif (str_contains($agent,'Linux')) {
+    //         $os = 'Linux';
+    //     } elseif (str_contains($agent,'iPhone')) {
+    //         $os = 'iOS';
+    //     }
+    //     // Create WiFi session
+    //     try {
+    //         // 🔥 STEP 18: Get Default Free Plan
+    //         $plan = \App\Models\WifiPlan::where('name', 'Free Plan')->where('is_active', true)->first();
+            
+    //         // Fallback if seeder hasn't run
+    //         $duration = $plan ? $plan->duration_minutes : 30;
+    //         $rateLimit = $plan ? ($plan->upload_limit . '/' . $plan->download_limit) : null;
+
+    //         \App\Models\WifiSession::create([
+    //             'user_id'          => $user->id,
+    //             'wifi_plan_id'     => $plan ? $plan->id : null,
+    //             'mac_address'      => $mac,
+    //             'ip_address'       => $ip,
+    //             'device_name'      => $agent,
+    //             'browser'          => $browser,
+    //             'os'               => $os,
+    //             'login_at'         => Carbon::now(),
+    //             'expires_at'       => Carbon::now()->addMinutes($duration),
+    //             'duration_minutes' => $duration,
+    //         ]);
+    //     } catch (\Throwable $e) {
+    //         // ... (rest of catch remains same)
+    //         logger()->error("WifiSession creation failed: " . $e->getMessage(), [
+    //             'exception' => get_class($e),
+    //             'file' => $e->getFile(),
+    //             'line' => $e->getLine(),
+    //             'trace' => $e->getTraceAsString(),
+    //             'data' => [
+    //                 'user_id' => $user->id,
+    //                 'mac' => $mac,
+    //                 'ip' => $ip,
+    //             ]
+    //         ]);
+    //         throw $e;
+    //     }
+        
+    //     // Sync user with router
+    //     $routerSynced = false;
+
+    //     try {
+    //         $routerSynced = $mikrotik->addHotspotUser(
+    //             $request->mobile,
+    //             $request->otp,
+    //             'default',
+    //             $rateLimit ?? null
+    //         );
+    //     } catch (\Exception $e) {
+    //         // router not connected yet
+    //     }
+
+    //     // 🔥 STEP 15 Router Redirect
+    //     $linkLogin = $request->input('link_login');
+    //     if ($linkLogin) {
+    //         $loginUrl = $linkLogin .
+    //             "?username=" . $request->mobile .
+    //             "&password=" . $request->otp;
+    //         return redirect($loginUrl);
+    //     }
+
+    //     // Redirect to success page
+    //     // If router sent a link_login, pass it to success view for captive portal redirect
+    //     return view('success', [
+    //         'mobile'       => $request->mobile,
+    //         'link_login'   => $request->input('link_login'),
+    //         'routerSynced' => $routerSynced,
+    //     ]);
+    // }
     public function verifyOtp(Request $request, MikrotikService $mikrotik)
     {
-        // Validate request
+        // 1️⃣ Validate request
         $request->validate([
             'mobile' => 'required|digits:10',
             'otp'    => 'required|digits:6',
         ]);
 
-        // Find valid OTP
-        $otpRecord = OtpRequest::where('mobile',     $request->mobile)
-                                ->where('otp_code',  $request->otp)
-                                ->where('verified',  false)
-                                ->where('expires_at', '>', Carbon::now())
-                                ->first();
-        
-        // OTP invalid or expired — redirect back with error
+        // 2️⃣ Check OTP
+        $otpRecord = OtpRequest::where('mobile', $request->mobile)
+        ->where('otp_code', $request->otp)
+        ->where('verified', false)
+        ->where('expires_at', '>', Carbon::now())
+        ->first();
+
         if (!$otpRecord) {
             return redirect()->back()
-                ->withInput($request->only('mobile', 'mac', 'ip', 'link_login'))
-                ->with('error', 'Invalid or Expired OTP. Please try again.');
+            ->withInput($request->only('mobile', 'mac', 'ip', 'link_login'))
+            ->with('error', 'Invalid or Expired OTP. Please try again.');
         }
 
-        // Mark OTP as verified
-        $otpRecord->update(['verified' => true]);       
+        // 3️⃣ Mark OTP verified
+        $otpRecord->update(['verified' => true]);
 
-        // Create or get WiFi user
+        // 4️⃣ Create or get user
         $user = WifiUser::firstOrCreate([
             'mobile' => $request->mobile
         ]);
-        $user->update(['last_verified_at' => now()]);
 
-        // Read MAC and IP from hidden form fields (sent by router)
+        $user->update([
+            'last_verified_at' => now()
+        ]);
+
+        // 5️⃣ Get MAC + IP
         $mac = $request->input('mac') ?: '00:00:00:00:00:00';
         $ip  = $request->input('ip')  ?: $request->ip();
 
         // Capture device info from User-Agent header
         $agent = $request->header('User-Agent');
 
-        //detect browser
+        // detect browser
         $browser = 'Unknown';
         if(str_contains($agent,'Chrome')) {
             $browser = 'Chrome';
@@ -126,73 +256,21 @@ class AuthController extends Controller
         } elseif (str_contains($agent,'iPhone')) {
             $os = 'iOS';
         }
-        // Create WiFi session
-        try {
-            // 🔥 STEP 18: Get Default Free Plan
-            $plan = \App\Models\WifiPlan::where('name', 'Free Plan')->where('is_active', true)->first();
-            
-            // Fallback if seeder hasn't run
-            $duration = $plan ? $plan->duration_minutes : 30;
-            $rateLimit = $plan ? ($plan->upload_limit . '/' . $plan->download_limit) : null;
 
-            \App\Models\WifiSession::create([
-                'user_id'          => $user->id,
-                'wifi_plan_id'     => $plan ? $plan->id : null,
-                'mac_address'      => $mac,
-                'ip_address'       => $ip,
-                'device_name'      => $agent,
-                'browser'          => $browser,
-                'os'               => $os,
-                'login_at'         => Carbon::now(),
-                'expires_at'       => Carbon::now()->addMinutes($duration),
-                'duration_minutes' => $duration,
-            ]);
-        } catch (\Throwable $e) {
-            // ... (rest of catch remains same)
-            logger()->error("WifiSession creation failed: " . $e->getMessage(), [
-                'exception' => get_class($e),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString(),
-                'data' => [
-                    'user_id' => $user->id,
-                    'mac' => $mac,
-                    'ip' => $ip,
-                ]
-            ]);
-            throw $e;
-        }
-        
-        // Sync user with router
-        $routerSynced = false;
-
+        // 6️⃣ Router sync (ONLY create user in router, NOT session)
         try {
-            $routerSynced = $mikrotik->addHotspotUser(
+            $mikrotik->addHotspotUser(
                 $request->mobile,
-                $request->otp,
+                $request->mobile, // password same as mobile (or change later)
                 'default',
-                $rateLimit ?? null
+                null
             );
         } catch (\Exception $e) {
-            // router not connected yet
+            // Ignore if router not connected
         }
 
-        // 🔥 STEP 15 Router Redirect
-        $linkLogin = $request->input('link_login');
-        if ($linkLogin) {
-            $loginUrl = $linkLogin .
-                "?username=" . $request->mobile .
-                "&password=" . $request->otp;
-            return redirect($loginUrl);
-        }
-
-        // Redirect to success page
-        // If router sent a link_login, pass it to success view for captive portal redirect
-        return view('success', [
-            'mobile'       => $request->mobile,
-            'link_login'   => $request->input('link_login'),
-            'routerSynced' => $routerSynced,
-        ]);
+        // 🔥 7️⃣ MAIN LOGIC ENTRY (MOST IMPORTANT)
+        return $this->handleUserAccess($user, $mac, $ip);
     }
 
     // disconnect
@@ -264,6 +342,61 @@ class AuthController extends Controller
         }
 
         return redirect($link . "?username=".$user->mobile. "&password=".$user->mobile);
+    }
+
+    //Step : 21 check authenticaion first time 
+    public function handleUserAccess($user, $mac, $ip)
+    {
+        // 1️⃣ Check active session
+        $activeSession = WifiSession::where('user_id', $user->id)
+        ->where('mac_address', $mac)
+        // ->whereRaw('TIMESTAMPDIFF(MINUTE, login_at, NOW()) < duration_minutes')
+        ->where('expires_at', '>', now())
+        ->latest()
+        ->first();
+
+        if ($activeSession) {
+            // return redirect('/success'); // allow internet
+            return view('success', [
+                'mobile'       => $user->mobile,
+                'link_login'   => request()->input('link_login'),
+                'routerSynced' => false,
+            ]);
+        }
+
+        // 2️⃣ Check free plan used this month
+        $usedFree = WifiSession::where('user_id', $user->id)
+        ->where('is_free', true)
+        // ->whereMonth('login_at', now()->month)
+        ->whereMonth('login_at', now()->format('m'))
+        ->whereYear('login_at', now()->format('Y'))
+        // ->whereYear('login_at', now()->year)
+        ->exists();
+
+        // 3️⃣ If NOT used → give FREE
+        if (!$usedFree) {
+            // Give FREE plan
+            WifiSession::create([
+                'user_id' => $user->id,
+                'mac_address' => $mac,
+                'ip_address' => $ip,
+                'login_at' => now(),
+                'duration_minutes' => 30,
+                'expires_at' => \Carbon\Carbon::now()->addMinutes(30),
+                // 'expires_at' => now()->addMinutes(30), // Step 21 Add this line
+                'is_free' => true
+            ]);
+
+            // return redirect('/success');
+            return view('success', [
+                'mobile'       => $user->mobile,
+                'link_login'   => request()->input('link_login'),
+                'routerSynced' => false,
+            ]);
+        }
+
+        // 3️⃣ No plan → redirect to plans
+        return redirect('/plans');
     }
 
 

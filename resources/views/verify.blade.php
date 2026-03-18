@@ -129,6 +129,13 @@
     <h2>Verify OTP</h2>
     <p class="subtitle">OTP sent to your mobile number</p>
     <p class="mobile-display">📱 +91 {{ $mobile }}</p>
+    
+    {{-- Development OTP display --}}
+    @if(isset($otp))
+        <div style="background: rgba(166, 227, 161, 0.1); border: 1px dashed #A6E3A1; color: #A6E3A1; padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-size: 14px;">
+            Development OTP: <strong>{{ $otp }}</strong>
+        </div>
+    @endif
 
     {{-- Show validation / session errors --}}
     @if($errors->any())

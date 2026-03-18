@@ -12,12 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('wifi_plans', function (Blueprint $table) {
-            $table->string('name')->after('id');
-            $table->decimal('price', 8, 2)->default(0)->after('name');
-            $table->integer('duration_minutes')->after('price');
-            $table->string('upload_limit')->nullable()->after('duration_minutes');
-            $table->string('download_limit')->nullable()->after('upload_limit');
-            $table->boolean('is_active')->default(true)->after('download_limit');
+            // $table->string('name')->after('id');
+            // $table->decimal('price', 8, 2)->default(0)->after('name');
+            // $table->integer('duration_minutes')->after('price');
+            // $table->string('upload_limit')->nullable()->after('duration_minutes');
+            // $table->string('download_limit')->nullable()->after('upload_limit');
+            // $table->boolean('is_active')->default(true)->after('download_limit');
         });
     }
 

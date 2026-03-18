@@ -83,15 +83,23 @@
 
         .btn:hover { opacity: 0.88; }
 
+
         .router-badge {
             display: inline-block;
             margin-top: 16px;
             font-size: 11px;
             padding: 4px 10px;
             border-radius: 20px;
-            background: {{ $routerSynced ? '#A6E3A1' : '#F9E2AF' }};
             color: #1E1E2E;
             font-weight: 600;
+        }
+
+        .router-badge--synced {
+            background: #A6E3A1;
+        }
+
+        .router-badge--unsynced {
+            background: #F9E2AF;
         }
 
         .footer {
@@ -105,7 +113,8 @@
 
 <div class="card">
     <div class="success-icon">✅</div>
-    <h2>Internet Access Granted!</h2>
+    <!-- <h2>Internet Access Granted!</h2> -->
+     <h2>Connected Successfully</h2>
     <p class="subtitle">You are now connected to WiFi</p>
 
     <div class="info-box">
@@ -118,8 +127,20 @@
     @if($link_login)
         <a class="btn" href="{{ $link_login }}">🌐 Start Browsing</a>
         <p style="font-size:11px;color:#6C7086;margin-top:8px;">Click above to complete router activation</p>
+        <script>
+            setTimeout(function() {
+                window.location.href = "{{ $link_login }}";
+            }, 2000);
+        </script>
+        <!-- <script>
+            const loginUrl = @json($link_login);
+            setTimeout(function() {
+                window.location.href = loginUrl;
+            }, 2000);
+        </script> -->
     @else
-        <a class="btn" href="https://www.google.com">🌐 Start Browsing</a>
+        <!-- <a class="btn" href="https://www.google.com">🌐 Start Browsing</a> -->
+         <p>Dev Mode: No router link found</p>
     @endif
 
     <span class="router-badge">

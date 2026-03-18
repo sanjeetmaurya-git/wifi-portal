@@ -11,8 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('wifi_plans', function (Blueprint $table) {
-            //
+        Schema::table('wifi_sessions', function (Blueprint $table) {
+            $table->boolean('is_free')->default(false);
         });
     }
 
@@ -21,7 +21,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('wifi_plans', function (Blueprint $table) {
+        Schema::table('wifi_sessions', function (Blueprint $table) {
             //
         });
     }
