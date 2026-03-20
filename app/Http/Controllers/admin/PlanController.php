@@ -52,4 +52,12 @@ class PlanController extends Controller
         return redirect('/admin/plans')->with('success', 'Plan Deleted');
     }
 
+    // user facing plans 
+    public function userPlans()
+    {
+        $plans = WifiPlan::where('is_active', true)
+            ->where('price', '>', 0) // Only show paid plans
+            ->get();
+        return view('plans', compact('plans'));
+    }
 }

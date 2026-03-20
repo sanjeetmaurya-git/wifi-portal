@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\admin\PlanController;
+use App\Http\Controllers\PaymentController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -58,3 +59,11 @@ Route::prefix('admin')->group(function () {
     Route::delete('/plans/{id}', [PlanController::class, 'destroy']);
 });
 
+Route::get('/plans', [PlanController::class, 'userPlans']); 
+
+// Step 22
+Route::get('/admin/transactions', [AdminController::class, 'transactions']); //admin can see transaction
+Route::post('/create-order', [PaymentController::class, 'createOrder']);
+Route::get('/payment-page', [PaymentController::class, 'paymentPage']);
+Route::post('/payment-success', [PaymentController::class, 'paymentSuccess']); //show payment sucess msg
+Route::post('/logout', [AdminController::class, 'logout'])->name('logout');

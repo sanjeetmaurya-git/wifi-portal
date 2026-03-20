@@ -116,13 +116,18 @@
         <a href="/admin/sessions">Sessions</a>
         <a href="/admin/otp-logs">OTP Logs</a>
         <a href="/admin/plans/">Plan</a>
+        <a href="/admin/transactions">Transactions</a>
         <!-- <a href="/admin/plans">Plans</a> -->
     </div>
     <!-- header of admin dashboard  -->
     <div class="header">
         <div class="admin-profile">
-            <span class="admin-name" style="font-style:italic;">Sanjeet</span>
-            <img src="https://ui-avatars.com/api/?name=Sm&background=89DCEB&color=1E1E2E" alt="Profile" class="admin-pic">
+            <span class="admin-name" style="font-style:italic;">{{ Auth::user()->name ?? 'Admin' }}</span>
+            <img src="https://ui-avatars.com/api/?name={{ Auth::user()->name ?? 'Admin' }}&background=89DCEB&color=1E1E2E" alt="Profile" class="admin-pic">
+            <form action="{{ route('logout') }}" method="POST" style="margin-left: 10px;">
+                @csrf
+                <button type="submit" style="background: #f38ba8; color: #1e1e2e; padding: 5px 10px; font-size: 12px;">Logout</button>
+            </form>
         </div>
     </div>
     <!-- main content od dashboard  -->

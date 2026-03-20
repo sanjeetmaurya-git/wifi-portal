@@ -6,8 +6,10 @@ use App\Models\WifiUser;
 use App\Models\WifiSession;
 use App\Models\OtpRequest;
 use App\Models\UsageLog;
+use App\Models\Transaction;
 use App\Services\MikrotikService;
-use Symfony\Component\HttpFoundation\Request;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class AdminController extends Controller
 {
@@ -136,6 +138,24 @@ class AdminController extends Controller
                 'status'=>'offline'
             ]);
         }
+    }
+
+    // step 22 transactions log
+    public function transactions()
+    {
+        $transactions = Transaction::with(['user', 'plan'])
+            ->latest()
+            ->paginate(10);
+        return view('admin.transactions', compact('transactions'));
+    }
+
+    // step 22 logout method
+    public function logout(Request $request)
+    {
+        Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+        return redirect('/admin');
     }
 
 }

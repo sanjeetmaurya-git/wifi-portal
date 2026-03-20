@@ -232,6 +232,13 @@ class AuthController extends Controller
         $mac = $request->input('mac') ?: '00:00:00:00:00:00';
         $ip  = $request->input('ip')  ?: $request->ip();
 
+        // ✅ Store in session for PaymentController
+        session([
+            'mobile' => $request->mobile,
+            'mac'    => $mac,
+            'ip'     => $ip
+        ]);
+
         // Capture device info from User-Agent header
         $agent = $request->header('User-Agent');
 
@@ -241,8 +248,7 @@ class AuthController extends Controller
             $browser = 'Chrome';
         } elseif (str_contains($agent,'Firefox')) {
             $browser = 'Firefox';
-        } 
-        elseif (str_contains($agent,'Safari')) {
+        } elseif (str_contains($agent, 'Safari') && !str_contains($agent, 'Chrome')) {
             $browser = 'Safari';
         }
 
@@ -270,7 +276,8 @@ class AuthController extends Controller
         }
 
         // 🔥 7️⃣ MAIN LOGIC ENTRY (MOST IMPORTANT)
-        return $this->handleUserAccess($user, $mac, $ip);
+        // return $this->handleUserAccess($user, $mac, $ip);
+        return $this->handleUserAccess($user, $mac, $ip, $agent, $browser, $os);
     }
 
     // disconnect
@@ -345,7 +352,8 @@ class AuthController extends Controller
     }
 
     //Step : 21 check authenticaion first time 
-    public function handleUserAccess($user, $mac, $ip)
+    // public function handleUserAccess($user, $mac, $ip)
+    public function handleUserAccess($user, $mac, $ip, $agent = null, $browser = 'Unknown', $os = 'Unknown')
     {
         // 1️⃣ Check active session
         $activeSession = WifiSession::where('user_id', $user->id)
@@ -384,7 +392,11 @@ class AuthController extends Controller
                 'duration_minutes' => 30,
                 'expires_at' => \Carbon\Carbon::now()->addMinutes(30),
                 // 'expires_at' => now()->addMinutes(30), // Step 21 Add this line
-                'is_free' => true
+                'is_free' => true,
+                // ✅ Ab yeh save honge
+                'device_name'      => $agent ?? 'Unknown',
+                'browser'          => $browser,
+                'os'               => $os,
             ]);
 
             // return redirect('/success');
