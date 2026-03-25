@@ -36,7 +36,7 @@ class PaymentController extends Controller
             'wifi_plan_id' => $plan->id,
             'order_id' => $order['id'],
             'amount' => $plan->price,
-            'status' => 'created'
+            'status' => 'paid'
         ]);
 
         session([

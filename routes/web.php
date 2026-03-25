@@ -67,3 +67,9 @@ Route::post('/create-order', [PaymentController::class, 'createOrder']);
 Route::get('/payment-page', [PaymentController::class, 'paymentPage']);
 Route::post('/payment-success', [PaymentController::class, 'paymentSuccess']); //show payment sucess msg
 Route::post('/logout', [AdminController::class, 'logout'])->name('logout');
+
+
+// Step 23 
+Route::get('/admin/revenue-data', [AdminController::class, 'revenueData'])
+    ->middleware('admin');
+Route::get('/admin/revenue-data', [AdminController::class, 'revenueData']);

@@ -149,6 +149,43 @@ class AdminController extends Controller
         return view('admin.transactions', compact('transactions'));
     }
 
+    //Step : 23 revenue data , daily monthly
+    public function revenueData(){
+        $todayRevenue = Transaction::where('status', 'paid')
+        ->whereDate('created_at', today())
+        ->sum('amount');;
+
+        $monthlyRevenue = Transaction::where('status', 'paid')
+        ->whereYear('created_at', now()->year) // FIXED
+        ->whereMonth('created_at', now()->month)
+        ->sum('amount');
+
+        $totalRevenue = Transaction::where('status', 'paid')
+        ->sum('amount');
+
+        $totalTransactions  = Transaction::where('status', 'paid')->count();
+
+        //last 7 days chart 
+        $char  = [];
+        for ($i = 6; $i >= 0; $i--) 
+            {
+                $date = now()->subDays($i)->format('Y-m-d');
+
+                $chart[] = Transaction::where('status', 'paid')
+                ->whereDate('created_at', $date)
+                ->sum('amount');
+
+            }
+
+            return response()->json([
+                'today' => $todayRevenue,
+                'monthly' => $monthlyRevenue,
+                'total'   => $totalRevenue,
+                'transactions' => $totalTransactions,
+                'chart'   => $chart
+            ]);
+    }
+
     // step 22 logout method
     public function logout(Request $request)
     {

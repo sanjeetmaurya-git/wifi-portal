@@ -40,6 +40,34 @@
     <h2 id="totalUsers">0</h2>
 </div>
 
+
+<!-- Step : 23 Revenue Section -->
+
+<div class="card">
+    <h3>Today's Revenue</h3>
+    <h2 id="todayRevenue">₹0</h2>
+</div>
+
+<div class="card">
+    <h3>Monthly Revenue</h3>
+    <h2 id="monthlyRevenue">₹0</h2>
+</div>
+
+<div class="card">
+    <h3>Total Revenue</h3>
+    <h2 id="totalRevenue">₹0</h2>
+</div>
+
+<div class="card">
+    <h3>Total Transactions</h3>
+    <h2 id="totalTransactions">0</h2>
+</div>
+
+<div class="card">
+    <h3>Revenue Chart</h3>
+    <canvas id="revenueChart"></canvas>
+</div>
+
 <!-- Show Router Status -->
 <div class="card">
     <h3>Router Status</h3>
@@ -69,9 +97,10 @@
 
 <script>
 
-document.addEventListener("DOMContentLoaded", function() {
-    // analytics data by json api 
-    function loadAnalytics(){
+document.addEventListener("DOMContentLoaded", function() 
+{
+     // analytics data by json api 
+     function loadAnalytics(){
         fetch('/admin/analytics-data')
         .then(res => res.json())
         .then(data => {
@@ -80,12 +109,12 @@ document.addEventListener("DOMContentLoaded", function() {
             document.getElementById('otpToday').innerText = data.otp_today
             document.getElementById('totalUsers').innerText = data.total_users
         })
-    }
-    loadAnalytics()
-    // update dasboard every 10 seconds 
-    setInterval(loadAnalytics,10000)
+     }
+     loadAnalytics()
+     // update dasboard every 10 seconds 
+     setInterval(loadAnalytics,10000)
 
-    function loadRouterStatus(){
+     function loadRouterStatus(){
         fetch('/admin/router-status')
         .then(res=>res.json())
         .then(data=>{
@@ -98,11 +127,11 @@ document.addEventListener("DOMContentLoaded", function() {
             el.innerText = 'ERROR';
             el.className = 'danger';
         });
-    }
-    loadRouterStatus();
-    setInterval(loadRouterStatus, 30000);
+     }
+     loadRouterStatus();
+     setInterval(loadRouterStatus, 30000);
 
-    // login users charts 
+     // login users charts 
     const ctx = document.getElementById('loginChart').getContext('2d')
     new Chart(ctx,{
         type:'line',
@@ -115,8 +144,55 @@ document.addEventListener("DOMContentLoaded", function() {
                 tension:0.4
                 }]
             }
-        })
-    });
+    })
+
+    //Step : 23 Revenue Chart
+    function loadRevenue(){
+        fetch('/admin/revenue-data')
+        .then(res=>res.json())
+        .then(data=>{
+            document.getElementById('todayRevenue').innerText = '₹' + data.today;
+            document.getElementById('monthlyRevenue').innerText = '₹' + data.monthly;
+            document.getElementById('totalRevenue').innerText = '₹' + data.total;
+            document.getElementById('totalTransactions').innerText = data.transactions;
+            
+            updateRevenueChart(data.chart);
+        });
+
+    }
+
+    //Auto load 
+    loadRevenue();
+    setInterval(loadRevenue, 10000);
+    
+    //Revenue Chart
+    let revenueChart;
+
+    function updateRevenueChart(chartData){
+        const ctx = document.getElementById('revenueChart').getContext('2d');
+
+        if(revenueChart){
+            revenueChart.data.datasets[0].data = chartData;
+            revenueChart.update();
+            return;
+        }
+
+        revenueChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['6d', '5d', '4d', '3d', '2d', '1d', 'Today'],
+                datasets: [{
+                    label: 'Revenue',
+                    data: chartData,
+                    borderColor: '#A6E3A1',
+                    tension: 0.4
+
+                }]
+            }
+        });
+    }
+
+});
 
     // Load Connected Devices
     function loadSessions(){
@@ -165,8 +241,6 @@ document.addEventListener("DOMContentLoaded", function() {
         //Auto Refresh Sessions
         loadSessions();
         setInterval(loadSessions,5000);
-
-
 
 
 
