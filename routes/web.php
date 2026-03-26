@@ -77,3 +77,15 @@ Route::get('/admin/revenue-data', [AdminController::class, 'revenueData']);
 
 // Step 24 
 Route::get('/my-plans', [UserController::class, 'myPlans']);
+
+//Step 25 
+Route::get('/dashboard', function () {
+    return view('user.dashboard');
+})->middleware('check.plan');
+
+Route::get('/dashboard', function () {
+    return view('user.dashboard');
+})->middleware('check.plan');
+
+//check active session 
+Route::get('/check-session', [UserController::class, 'checkSession']);

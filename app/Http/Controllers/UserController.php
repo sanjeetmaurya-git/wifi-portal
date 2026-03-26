@@ -29,4 +29,35 @@ class UserController extends Controller
 
         return view('user.my_plans', compact('transactions','sessions') );
     }
+
+    //Step 25 
+    public function checkSession()
+    {
+        $mobile = session('mobile');
+
+        if (!$mobile) {
+            return response()->json(['active' => false]);
+        }
+
+        $session = \App\Models\WifiSession::whereHas('user', function ($q) use ($mobile) {
+            $q->where('mobile', $mobile);
+        })
+        ->whereNull('logout_at')
+        ->latest()
+        ->first();
+
+        if (!$session) {
+            return response()->json(['active' => false]);
+        }
+
+        $expiry = \Carbon\Carbon::parse($session->login_at)
+        ->addMinutes($session->duration_minutes);
+
+        if (now() > $expiry) {
+            $session->update(['logout_at' => now()]);
+            return response()->json(['active' => false]);
+        }
+
+        return response()->json(['active' => true]);
+        }
 }
