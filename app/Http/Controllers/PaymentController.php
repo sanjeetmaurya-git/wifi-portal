@@ -36,7 +36,7 @@ class PaymentController extends Controller
             'wifi_plan_id' => $plan->id,
             'order_id' => $order['id'],
             'amount' => $plan->price,
-            'status' => 'paid'
+            'status' => 'created'
         ]);
 
         session([
@@ -73,14 +73,18 @@ class PaymentController extends Controller
                 return response()->json(['error' => 'Already Paid']);
             }
 
+            // get currnt plan of user 
+            $user = WifiUser::find($transaction->user_id);
+            $plan = WifiPlan::find($transaction->wifi_plan_id);
+
             // ✅ Update transaction
             $transaction->update([
                 'payment_id' => $request->payment_id,
-                'status' => 'paid'
+                'status' => 'paid',
+                'expires_at' => now()->addMinutes($plan->duration_minutes)
             ]);
 
-            $user = WifiUser::find($transaction->user_id);
-            $plan = WifiPlan::find($transaction->wifi_plan_id);
+
 
             // ✅ Activate plan
             WifiSession::create([

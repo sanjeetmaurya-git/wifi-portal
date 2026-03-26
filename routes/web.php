@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\admin\PlanController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\UserController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -73,3 +74,6 @@ Route::post('/logout', [AdminController::class, 'logout'])->name('logout');
 Route::get('/admin/revenue-data', [AdminController::class, 'revenueData'])
     ->middleware('admin');
 Route::get('/admin/revenue-data', [AdminController::class, 'revenueData']);
+
+// Step 24 
+Route::get('/my-plans', [UserController::class, 'myPlans']);
