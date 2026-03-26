@@ -38,9 +38,19 @@ class AuthController extends Controller
     public function sendOtp(Request $request)
     {
         // Validate mobile
-        $request->validate(['mobile' => 'required|digits:10']);
+        $request->validate(['mobile' => 'required | digits:10 | regex:/^[6-9]\d{9}$/']);
 
         $mobile = $request->mobile;
+
+        // 🔐 STEP 26 — OTP RATE LIMIT (ADD HERE)
+        $recentOtp = OtpRequest::where('mobile', $mobile)
+        ->where('created_at', '>', Carbon::now()->subMinutes(1))
+        ->count();
+
+        if ($recentOtp >= 3) {
+            return back()->with('error', 'Too many OTP requests. Try after 1 minute.');
+        }
+
         $otp = rand(100000, 999999);
 
         // save otp in database
@@ -57,7 +67,7 @@ class AuthController extends Controller
         // ]);
 
         echo "Your OTP is: " . $otp;
-// compact('mobile')
+ // compact('mobile')
         return view('verify', [
             'mobile'     => $mobile,
             'otp'        => $otp, // Pass OTP for development
@@ -227,6 +237,20 @@ class AuthController extends Controller
         $user->update([
             'last_verified_at' => now()
         ]);
+
+        // 🔐 STEP 26 — LOGOUT PREVIOUS SESSIONS (ADD HERE)
+        WifiSession::where('user_id', $user->id)
+        ->whereNull('logout_at')
+        ->update(['logout_at' => now()]);
+
+        // 🔐 STEP 26 — MAC VALIDATION (ADD HERE)
+        /**This will uncomment in final production  */
+        /*
+        if (!$request->mac) {
+            return back()
+            ->withInput($request->only('mobile', 'ip', 'link_login'))
+            ->with('error', 'Invalid device');
+        }*/
 
         // 5️⃣ Get MAC + IP
         $mac = $request->input('mac') ?: '00:00:00:00:00:00';

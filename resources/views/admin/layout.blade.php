@@ -122,9 +122,9 @@
     <!-- header of admin dashboard  -->
     <div class="header">
         <div class="admin-profile">
-            <span class="admin-name" style="font-style:italic;">{{ Auth::user()->name ?? 'Admin' }}</span>
-            <img src="https://ui-avatars.com/api/?name={{ Auth::user()->name ?? 'Admin' }}&background=89DCEB&color=1E1E2E" alt="Profile" class="admin-pic">
-            <form action="{{ route('logout') }}" method="POST" style="margin-left: 10px;">
+            <span class="admin-name" style="font-style:italic;">Admin</span>
+            <img src="https://ui-avatars.com/api/?name=Admin&background=89DCEB&color=1E1E2E" alt="Profile" class="admin-pic">
+            <form action="{{ route('admin.logout') }}" method="POST" style="margin-left: 10px;">
                 @csrf
                 <button type="submit" style="background: #f38ba8; color: #1e1e2e; padding: 5px 10px; font-size: 12px;">Logout</button>
             </form>

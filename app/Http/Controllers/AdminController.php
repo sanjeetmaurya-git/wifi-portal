@@ -14,6 +14,29 @@ use Illuminate\Support\Facades\Auth;
 class AdminController extends Controller
 {
 
+    public function showLoginForm()
+    {
+        if (session('is_admin')) {
+            return redirect('/admin');
+        }
+        return view('admin.login');
+    }
+
+    public function login(Request $request)
+    {
+        $request->validate([
+            'username' => 'required',
+            'password' => 'required'
+        ]);
+
+        if ($request->username === 'admin' && $request->password === 'admin@123') {
+            session(['is_admin' => true]);
+            return redirect('/admin');
+        }
+
+        return redirect('/admin/login')->with('error', 'Invalid Credentials');
+    }
+
     public function dashboard()
     {
         $users = WifiUser::count();
@@ -189,10 +212,8 @@ class AdminController extends Controller
     // step 22 logout method
     public function logout(Request $request)
     {
-        Auth::logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-        return redirect('/admin');
+        $request->session()->forget('is_admin');
+        return redirect('/admin/login');
     }
 
 }

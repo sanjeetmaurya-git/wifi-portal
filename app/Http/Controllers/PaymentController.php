@@ -62,10 +62,16 @@ class PaymentController extends Controller
                 'razorpay_signature' => $request->signature
             ]);
 
-            $transaction = Transaction::where('order_id', $request->order_id)->first();
+            // $transaction = Transaction::where('order_id', $request->order_id)->first();
+            $transaction = Transaction::where('order_id', $request->order_id)->where('status', 'created')->first();  //Step 26
 
             if (!$transaction) {
-                return response()->json(['error' => 'Invalid Order'], 400);
+                return response()->json(['error' => 'Invalid Transaction'], 400);
+            }
+
+            //verify transaction ammunt 
+            if ($transaction->amount != session('amount')) {
+                return response()->json(['error' => 'Amount mismatch'], 400);
             }
 
             // ✅ Prevent duplicate payment
