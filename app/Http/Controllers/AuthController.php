@@ -301,7 +301,19 @@ class AuthController extends Controller
 
         // 🔥 7️⃣ MAIN LOGIC ENTRY (MOST IMPORTANT)
         // return $this->handleUserAccess($user, $mac, $ip);
-        return $this->handleUserAccess($user, $mac, $ip, $agent, $browser, $os);
+        // return $this->handleUserAccess($user, $mac, $ip, $agent, $browser, $os);  in step 27 commented this 
+        /**Step 27 aded this also   MikroTik login redirect (FINAL STEP)  */
+        // MikroTik sends 'link-login' (hyphen); form converts it to 'link_login' (underscore).
+        // We try both to be safe.
+        $linkLogin = $request->input('link_login') ?? $request->input('link-login');
+
+        if ($linkLogin) {
+            return redirect($linkLogin . '?username=' . $request->mobile . '&password=' . $request->mobile);
+        }
+
+        // Fallback for dev/browser testing (no MikroTik link present)
+        return redirect('/plans')->with('success', 'OTP Verified! Please choose a plan.');
+
     }
 
     // disconnect
