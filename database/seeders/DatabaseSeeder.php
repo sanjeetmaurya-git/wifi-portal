@@ -17,9 +17,11 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
+        // ✅ Official Admin Caste Credentials
         User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+            'name' => 'Admin Boss',
+            'email' => 'admin@1209.com',
+            'password' => bcrypt('admin@123')
         ]);
     }
 }

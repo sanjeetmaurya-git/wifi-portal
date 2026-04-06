@@ -13,8 +13,9 @@ Route::get('/', function () {
 
 
 //login, send otp, verify-Auth route
-Route::get('/login',[AuthController::class,'loginPage']);
+Route::get('/login',[AuthController::class,'loginPage'])->name('login');
 Route::post('/send-otp',[AuthController::class,'sendOtp']);
+Route::post('/register-save',[AuthController::class,'saveRegistration'])->name('register.save');
 Route::post('/verify-otp',[AuthController::class,'verifyOtp']);
 
 // Route::view('/success', 'success');

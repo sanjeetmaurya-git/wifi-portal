@@ -34,11 +34,18 @@ class MikrotikService
         return new Client($config);
     }
 
-    public function addHotspotUser(string $mobile, string $password, string $profile = 'default', string $rateLimit = null): bool
+    public function addHotspotUser(
+        string $mobile, 
+        string $password, 
+        string $profile = 'default', 
+        string $uptimeLimit = null, 
+        string $bytesLimit = null,
+        string $rateLimit = null
+    ): bool
     {
         // ✅ Development Mode — No Router Needed
         if ($this->isDevelopmentMode()) {
-            Log::info("[MikroTik MOCK] User added/updated → Mobile: $mobile | Profile: $profile");
+            Log::info("[MikroTik MOCK] User added/updated → Mobile: $mobile | Profile: $profile | Limits: $uptimeLimit / $bytesLimit");
             return true;
         }
 
@@ -50,29 +57,39 @@ class MikrotikService
             $existsQuery->where('name', $mobile);
             $existing = $client->query($existsQuery)->read();
 
+            // Prepare common parameters
+            $params = [
+                'password' => $password,
+                'profile'  => $profile
+            ];
+
+            if ($uptimeLimit) $params['limit-uptime'] = $uptimeLimit;
+            if ($bytesLimit)  $params['limit-bytes-total'] = $bytesLimit;
+            if ($rateLimit)   $params['rate-limit'] = $rateLimit;
+
             if (!empty($existing)) {
                 // 🔄 Update existing user
                 $userId = $existing[0]['.id'];
                 $updateQuery = new Query('/ip/hotspot/user/set');
                 $updateQuery->equal('.id', $userId);
-                $updateQuery->equal('password', $password);
-                $updateQuery->equal('profile', $profile);
-                if ($rateLimit) {
-                    $updateQuery->equal('rate-limit', $rateLimit);
+                
+                foreach ($params as $key => $value) {
+                    $updateQuery->equal($key, (string)$value);
                 }
+                
                 $client->query($updateQuery)->read();
-                Log::info("[MikroTik] User updated successfully → $mobile");
+                Log::info("[MikroTik] User updated successfully with limits → $mobile");
             } else {
                 // ✨ Add new user
                 $addQuery = new Query('/ip/hotspot/user/add');
                 $addQuery->equal('name', $mobile);
-                $addQuery->equal('password', $password);
-                $addQuery->equal('profile', $profile);
-                if ($rateLimit) {
-                    $addQuery->equal('rate-limit', $rateLimit);
+                
+                foreach ($params as $key => $value) {
+                    $addQuery->equal($key, (string)$value);
                 }
+                
                 $client->query($addQuery)->read();
-                Log::info("[MikroTik] User created successfully → $mobile");
+                Log::info("[MikroTik] User created successfully with limits → $mobile");
             }
 
             return true;

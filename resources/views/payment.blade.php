@@ -17,8 +17,9 @@ var options = {
                 'X-CSRF-TOKEN': '{{ csrf_token() }}'
             },
             body: JSON.stringify({
-                payment_id: response.razorpay_payment_id,
-                order_id: response.razorpay_order_id
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_signature: response.razorpay_signature
             })
         }).then(response => response.text())
         .then(html => {

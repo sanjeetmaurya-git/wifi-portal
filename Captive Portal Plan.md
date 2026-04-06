@@ -1,67 +1,104 @@
-# 📶 Industry-Level SaaS Captive Portal Master Plan
+# 📶 **MIKROTIK CAPTIVE PORTAL — SAAS MASTER MASTER MASTER PLAN** 🚀
 
-## 🎯 **SaaS Standard Architecture**
-To build a highly reliable, multi-router SaaS portal where users are identifies by MAC address, undergo a one-time KYC (registration), and are granted internet automatically for 15 days after verification. 
+## 📜 **CURRENT STATUS: PHASE 3 (LIMITS & ENFORCEMENT) 🔓**
+The system is now **Functional, Paying, and Verified**. We are now moving to **Limit Enforcement** to protect your revenue.
 
 ---
 
-## 🏗️ **SYSTEM LOGIC FLOW (Graph)**
-
+## 🗺️ **ARCHITECTURE OVERVIEW**
 ```mermaid
 graph TD
-    A[WiFi Connect] --> B{MAC Identified?}
-    B -- YES (Auto-Login) --> C{Active Plan & < 15 Days?}
-    C -- YES --> D[Auto-Login via API -> Internet ✅]
-    C -- NO --> E[Show Plans Selection]
-    B -- NO --> F[Redirect to Mobile Number UI]
-    F --> G{Registered?}
-    G -- NO --> H[Show KYC Form: Name, Address, etc.]
-    H --> I[Verify OTP -> Create Profile]
-    G -- YES --> J[Verify OTP -> Update MAC]
-    I --> J
-    J --> E
-    E --> K[Razorpay Payment]
-    K --> L[Success -> API Auth -> Internet ✅]
-    L --> M[Forensic Log (14 Months)]
+    A[📱 User Device] --> B[📶 MikroTik Router]
+    B --> C{🏠 Laravel Portal}
+    C -->|New User| D[📄 KYC Registration]
+    D --> E[🛡️ OTP Verification]
+    E --> F[💰 Plan Selection]
+    C -->|Verified < 15 Days| G[⚡ Auto-Login Brain]
+    G --> H[🚀 Internet Access]
+    F -->|Paid| I[💳 Razorpay]
+    I -->|Success| J[🛠️ MikroTik API Sync]
+    J --> H
+    H -->|Exceeded Limit| K[🔴 Router Kickout]
+    K --> C
 ```
 
 ---
 
-## 🛠️ **ADMIN SUPER-POWERS (The Dashboard)**
-*   **Plan Engine:** Admin can Create, Update, and Delete all WiFi Plans (Price, Time, Speed Limits).
-*   **User Manager:** Manage all KYC entries (Name, Address, City) and block/unblock users.
-*   **Live Analytics:** Real-time data on Transactions, Active Sessions, and Bandwidth usage.
-*   **Compliance Exporter:** Export session history (Forensic data) to PDF/Excel for law enforcement.
+## 🛠️ **PHASE PROGRESS:**
+
+### ✅ **PHASE 1: REDIRECT & POPUP (COMPLETE)**
+*   **Redirector:** MikroTik `hotspot/login.html` meta-refresh to Laravel. 🚀
+*   **Auto-Popup:** Walled Garden bypass to force mobile "Sign in to network" notifications. 🚀
+*   **15-Day Brain:** MAC recognition to bypass login for returning users. 🚀
+
+### ✅ **PHASE 2: KYC & VERIFICATION (COMPLETE)**
+*   **Verification:** Mandatory Name, Address, and Mobile data capture (Legal Forensics). 🚀
+*   **ID Check:** Optional Aadhar/ID details for 14-month compliance. 🚀
+*   **OTP Brain:** SMS verification integrated with the "SaaS Brain". 🚀
+
+### 🚧 **PHASE 3: LIMIT ENFORCEMENT & SHIELD (CURRENT)**
+*   **Bandwidth Control:** Apply `limit-bytes-total` (e.g., 1GB) via API. 🚀
+*   **Time Control:** Apply `limit-uptime` (e.g., 24 Hours) via API. 🚀
+*   **Profile Mapping:** Link MikroTik profiles (1MB/5MB/10MB) to Laravel plans. 🚀
 
 ---
 
-## 📁 **TECHNICAL ASSETS**
-
-### **MikroTik `login.html` (Perfect Pop-up Code)**
-Upload this to your MikroTik `hotspot/` folder:
-```html
-<html><head><title>Connecting...</title>
-<meta http-equiv="refresh" content="0;url=http://192.168.88.94:8000/login?mac=$(mac)&ip=$(ip)&link_login=$(link-login)"></head>
-<body>Redirecting to Login Portal...</body></html>
-```
+## 🛡️ **LEGAL & FORENSIC COMPLIANCE**
+*   **14-Month Logs:** Maintaining session time, IP, MAC, and KYC data. 🎯
+*   **Auto-Pruning:** Weekly task to delete sessions > 1,021,248 minutes (14 months). 🎯
+*   **Misuse Clause:** Registration form requires legal declaration acknowledgment. 🎯
 
 ---
 
-## 🏁 **STATUS & PHASES**
+## 🏰 **PHASE 4: THE ADMIN CASTLE (DASHBOARD)**
+The central command center for the SaaS owner to monitor revenue, users, and performance.
 
-### **Phase 1: Connectivity & Payment (COMPLETED ✅)**
-*   [x] Router API Setup (TcpTestSucceeded: True).
-*   [x] Razorpay Integration Successful.
-*   [x] Basic Backend Service (MikrotikService).
+### 🛡️ **ADMIN ACCESS:**
+*   **Username:** `admin` or `admin@1209` (As provided by user) 🚀
+*   **Password:** `admin@123` 🚀
 
-### **Current Phase: 2. SaaS Intelligence & KYC (IN PROGRESS ⏳)**
-*   [ ] Migration to add KYC Fields (Name, Address, etc.).
-*   [ ] `AuthController` 15-Day Logic rewrite.
-*   [ ] Admin Panel: Plan CRUD (Create, Read, Update, Delete).
-
-### **Phase 3: Forensic & Launch (PENDING 🚀)**
-*   [ ] 14-Month Session Log Auto-Cleanup.
-*   [ ] Public Domain Deployment (Cloud).
+### 🏰 **DASHBOARD MODULES:**
+1.  **Plan Manager:**
+    *   Dynamic CRUD for speed, data limits (GB), and time limits (m). 🚀
+    *   Mikrotik Profile mapping for instant sync. 🚀
+2.  **KYC Management (User Table):**
+    *   Full searchable table of Names, Mobile, and Addresses. 🚀
+    *   Export data for legal compliance checks. 🚀
+3.  **Revenue & Transactions:**
+    *   Real-time Razorpay payment tracking. 🚀
+    *   Daily, Weekly, and Monthly income totals. 🚀
+4.  **Forensic Cleanup:**
+    *   Automated scheduler for 14-month history pruning. 🚀
 
 ---
-✍️ *SaaS Captive Portal — Master Plan. Updated: 2026-04-06*
+
+## 🏗️ **PHASE 5: THE WANI DISTRIBUTION NETWORK (PDO HIERARCHY)**
+The system is evolving into a full-scale PM-WANI style revenue engine.
+
+### 🛡️ **USER HIERARCHY:**
+1.  **ADMIN (MASTER OVERLORD):** 
+    *   Creates **Master PDOs** and regular **PDOs**. 🚀
+    *   Controls Global Commission rates. 🚀
+2.  **MASTER PDO:** 
+    *   Manages a fleet of individual PDOs. 🚀
+    *   Earns a **distribution commission** on every transaction in their network. 🚀
+3.  **PDO (Public Data Office):** 
+    *   Owns the MikroTik router and physical location. 🚀
+    *   Earns a **location commission** on every user payment. 🚀
+
+### 📶 **ROUTER & PDO MONITORING:**
+*   **Live Status:** Admin/PDO can see "Online/Offline" icons for every Router ID. 🚀
+*   **PDO Trace:** Trace Router performance by Name and Mobile of the PDO Owner. 🚀
+*   **Commission Engine:** Auto-calculate earnings for Master PDO and regular PDO after every Razorpay success. 🚀
+
+---
+
+## 📈 **FUTURE REVENUE PLAN:**
+*   **Master PDO Commision:** 2% - 5% per transaction. 🚀
+*   **PDO Commision:** 60% - 80% per transaction. 🚀
+*   **Admin Fee:** 15% - 30% for SaaS maintenance. 🚀
+
+---
+
+## 🏁 **MASTER MASTER MASTER MASTER VISION 🌟**
+"User → MikroTik → Laravel → Plan → Commission → Internet" — **THE ULTIMATE ISP SaaS.** 🎯🏎️💨
