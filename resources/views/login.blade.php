@@ -110,9 +110,9 @@
         @csrf
 
         {{-- Router parameters: pass through so they survive the OTP step --}}
-        <input type="hidden" name="mac"        value="{{ old('mac', request('mac')) }}">
-        <input type="hidden" name="ip"         value="{{ old('ip', request('ip')) }}">
-        <input type="hidden" name="link_login" value="{{ old('link_login', request('link-login')) }}">
+        <input type="hidden" name="mac"        value="{{ old('mac', request('mac') ?? request('mac-address')) }}">
+        <input type="hidden" name="ip"         value="{{ old('ip', request('ip') ?? request('ip-address')) }}">
+        <input type="hidden" name="link_login" value="{{ old('link_login', request('link_login') ?? request('link-login')) }}">
         <input type="hidden" name="username"   value="{{ old('username', request('username')) }}">
 
         <label for="mobile">Mobile Number</label>

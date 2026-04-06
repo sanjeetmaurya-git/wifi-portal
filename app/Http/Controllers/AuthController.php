@@ -8,26 +8,50 @@ use Carbon\Carbon;
 use App\Models\WifiUser;
 use App\Models\WifiSession;
 use App\Services\MikrotikService;
-
-// // use function Symfony\Component\Clock\now;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
+    protected $mikrotik;
+
+    public function __construct(MikrotikService $mikrotik)
+    {
+        $this->mikrotik = $mikrotik;
+    }
+
     // login page
     public function loginPage(Request $request)
     {
-        $mac = $request->input('mac', 'unknown');
+        $mac = $request->input('mac') ?: $request->input('mac-address') ?: 'unknown';
+        $linkLogin = $request->input('link_login') ?? $request->input('link-login');
 
-        // Check if this MAC has an active, non-expired session
+        // Check if this MAC has an active, non-expired session in our DB
         $activeSession = WifiSession::where('mac_address', $mac)
-                                    ->where('expires_at', '>', Carbon::now())
-                                    ->latest()
-                                    ->first();
+            ->where('expires_at', '>', Carbon::now())
+            ->with('user')
+            ->latest()
+            ->first();
 
         if ($activeSession) {
+            // 🔍 SYNC CHECK: Check if they are TRULY active on the MikroTik router
+            $isTrulyActive = $this->mikrotik->isUserActive($activeSession->user->mobile);
+
+            if (!$isTrulyActive && $linkLogin) {
+                // Not active on router! Re-authenticate using our hidden POST form
+                Log::info("[Auth] User in DB but inactive on router. Re-authenticating " . $activeSession->user->mobile);
+                
+                return view('mikrotik-login', [
+                    'link_login' => $linkLogin,
+                    'username'   => $activeSession->user->mobile,
+                    'password'   => $activeSession->user->mobile, // Assuming password is same as mobile
+                    'mac'        => $mac
+                ]);
+            }
+
+            // If active on router, or we don't have link_login, show the status card
             return view('status', [
                 'session' => $activeSession,
-                'mobile'  => $activeSession->user->mobile ?? 'User',
+                'mobile' => $activeSession->user->mobile
             ]);
         }
 
@@ -44,8 +68,8 @@ class AuthController extends Controller
 
         // 🔐 STEP 26 — OTP RATE LIMIT (ADD HERE)
         $recentOtp = OtpRequest::where('mobile', $mobile)
-        ->where('created_at', '>', Carbon::now()->subMinutes(1))
-        ->count();
+            ->where('created_at', '>', Carbon::now()->subMinutes(1))
+            ->count();
 
         if ($recentOtp >= 3) {
             return back()->with('error', 'Too many OTP requests. Try after 1 minute.');
@@ -55,8 +79,8 @@ class AuthController extends Controller
 
         // save otp in database
         OtpRequest::create([
-            'mobile'     => $mobile,
-            'otp_code'   => $otp,
+            'mobile' => $mobile,
+            'otp_code' => $otp,
             'ip_address' => $request->ip(),
             'expires_at' => Carbon::now()->addMinutes(5)
         ]);
@@ -67,13 +91,13 @@ class AuthController extends Controller
         // ]);
 
         echo "Your OTP is: " . $otp;
- // compact('mobile')
+        // compact('mobile')
         return view('verify', [
-            'mobile'     => $mobile,
-            'otp'        => $otp, // Pass OTP for development
-            'mac'        => $request->input('mac'),
-            'ip'         => $request->input('ip') ?? $request->ip(),
-            'link_login' => $request->input('link_login')
+            'mobile' => $mobile,
+            'otp' => $otp, // Pass OTP for development
+            'mac' => $request->input('mac'),
+            'ip' => $request->input('ip') ?? $request->ip(),
+            'link_login' => $request->input('link_login') ?? $request->input('link-login')
         ]);
     }
 
@@ -92,7 +116,7 @@ class AuthController extends Controller
     //                             ->where('verified',  false)
     //                             ->where('expires_at', '>', Carbon::now())
     //                             ->first();
-        
+
     //     // OTP invalid or expired — redirect back with error
     //     if (!$otpRecord) {
     //         return redirect()->back()
@@ -141,7 +165,7 @@ class AuthController extends Controller
     //     try {
     //         // 🔥 STEP 18: Get Default Free Plan
     //         $plan = \App\Models\WifiPlan::where('name', 'Free Plan')->where('is_active', true)->first();
-            
+
     //         // Fallback if seeder hasn't run
     //         $duration = $plan ? $plan->duration_minutes : 30;
     //         $rateLimit = $plan ? ($plan->upload_limit . '/' . $plan->download_limit) : null;
@@ -173,7 +197,7 @@ class AuthController extends Controller
     //         ]);
     //         throw $e;
     //     }
-        
+
     //     // Sync user with router
     //     $routerSynced = false;
 
@@ -210,20 +234,20 @@ class AuthController extends Controller
         // 1️⃣ Validate request
         $request->validate([
             'mobile' => 'required|digits:10',
-            'otp'    => 'required|digits:6',
+            'otp' => 'required|digits:6',
         ]);
 
         // 2️⃣ Check OTP
         $otpRecord = OtpRequest::where('mobile', $request->mobile)
-        ->where('otp_code', $request->otp)
-        ->where('verified', false)
-        ->where('expires_at', '>', Carbon::now())
-        ->first();
+            ->where('otp_code', $request->otp)
+            ->where('verified', false)
+            ->where('expires_at', '>', Carbon::now())
+            ->first();
 
         if (!$otpRecord) {
             return redirect()->back()
-            ->withInput($request->only('mobile', 'mac', 'ip', 'link_login'))
-            ->with('error', 'Invalid or Expired OTP. Please try again.');
+                ->withInput($request->only('mobile', 'mac', 'ip', 'link_login'))
+                ->with('error', 'Invalid or Expired OTP. Please try again.');
         }
 
         // 3️⃣ Mark OTP verified
@@ -240,8 +264,8 @@ class AuthController extends Controller
 
         // 🔐 STEP 26 — LOGOUT PREVIOUS SESSIONS (ADD HERE)
         WifiSession::where('user_id', $user->id)
-        ->whereNull('logout_at')
-        ->update(['logout_at' => now()]);
+            ->whereNull('logout_at')
+            ->update(['logout_at' => now()]);
 
         // 🔐 STEP 26 — MAC VALIDATION (ADD HERE)
         /**This will uncomment in final production  */
@@ -252,15 +276,21 @@ class AuthController extends Controller
             ->with('error', 'Invalid device');
         }*/
 
-        // 5️⃣ Get MAC + IP
-        $mac = $request->input('mac') ?: '00:00:00:00:00:00';
-        $ip  = $request->input('ip')  ?: $request->ip();
+        // 5️⃣ Get MAC + IP (Enhanced detection)
+        $mac = $request->input('mac') ?: $request->input('mac-address') ?: $request->input('mac_address') ?: 'unknown';
+        $ip = $request->input('ip')  ?: $request->input('ip-address')  ?: $request->ip();
 
         // ✅ Store in session for PaymentController
+        $linkLogin = $request->input('link_login') ?? $request->input('link-login');
+        if (!$linkLogin) {
+            $linkLogin = 'http://' . env('MIKROTIK_HOST', '192.168.88.1') . '/login';
+        }
+
         session([
             'mobile' => $request->mobile,
-            'mac'    => $mac,
-            'ip'     => $ip
+            'mac' => $mac,
+            'ip' => $ip,
+            'link_login' => $linkLogin,
         ]);
 
         // Capture device info from User-Agent header
@@ -268,50 +298,78 @@ class AuthController extends Controller
 
         // detect browser
         $browser = 'Unknown';
-        if(str_contains($agent,'Chrome')) {
+        if (str_contains($agent, 'Chrome')) {
             $browser = 'Chrome';
-        } elseif (str_contains($agent,'Firefox')) {
+        } elseif (str_contains($agent, 'Firefox')) {
             $browser = 'Firefox';
         } elseif (str_contains($agent, 'Safari') && !str_contains($agent, 'Chrome')) {
             $browser = 'Safari';
         }
 
         $os = 'Unknown';
-        if (str_contains($agent,'Windows')) {
+        if (str_contains($agent, 'Windows')) {
             $os = 'Windows';
-        } elseif (str_contains($agent,'Android')) {
+        } elseif (str_contains($agent, 'Android')) {
             $os = 'Android';
-        } elseif (str_contains($agent,'Linux')) {
+        } elseif (str_contains($agent, 'Linux')) {
             $os = 'Linux';
-        } elseif (str_contains($agent,'iPhone')) {
+        } elseif (str_contains($agent, 'iPhone')) {
             $os = 'iOS';
         }
 
-        // 6️⃣ Router sync (ONLY create user in router, NOT session)
+        // 6️⃣ Add user to MikroTik router (MUST happen BEFORE login attempt)
         try {
             $mikrotik->addHotspotUser(
                 $request->mobile,
-                $request->mobile, // password same as mobile (or change later)
+                $request->mobile, // username = password = mobile number
                 'default',
                 null
             );
         } catch (\Exception $e) {
-            // Ignore if router not connected
+            // Ignore if router not connected in dev mode
         }
 
-        // 🔥 7️⃣ MAIN LOGIC ENTRY (MOST IMPORTANT)
-        // return $this->handleUserAccess($user, $mac, $ip);
-        // return $this->handleUserAccess($user, $mac, $ip, $agent, $browser, $os);  in step 27 commented this 
-        /**Step 27 aded this also   MikroTik login redirect (FINAL STEP)  */
-        // MikroTik sends 'link-login' (hyphen); form converts it to 'link_login' (underscore).
-        // We try both to be safe.
+        // 7️⃣ Create a FREE session immediately after OTP
+        //    This powers the timer/status card and is required for loginPage auto-login
+        $plan = \App\Models\WifiPlan::where('name', 'Free Plan')->where('is_active', true)->first();
+        $duration = $plan ? $plan->duration_minutes : 30;
+
+        $usedFreeThisMonth = WifiSession::where('user_id', $user->id)
+            ->where('is_free', true)
+            ->whereMonth('login_at', now()->format('m'))
+            ->whereYear('login_at', now()->format('Y'))
+            ->exists();
+
+        if (!$usedFreeThisMonth) {
+            WifiSession::create([
+                'user_id' => $user->id,
+                'mac_address' => $mac,
+                'ip_address' => $ip,
+                'login_at' => now(),
+                'duration_minutes' => $duration,
+                'expires_at' => now()->addMinutes($duration),
+                'is_free' => true,
+                'device_name' => $agent ?? 'Unknown',
+                'browser' => $browser,
+                'os' => $os,
+            ]);
+        }
+
+        // 🔥 8️⃣ MikroTik Login — MUST be POST (GET redirect does NOT create Active session)
+        // MikroTik sends 'link-login' (hyphen); HTML form converts it to 'link_login' (underscore).
         $linkLogin = $request->input('link_login') ?? $request->input('link-login');
+        if (!$linkLogin) {
+            $linkLogin = 'http://' . env('MIKROTIK_HOST', '192.168.88.1') . '/login';
+        }
 
         if ($linkLogin) {
-            return redirect($linkLogin . '?username=' . $request->mobile . '&password=' . $request->mobile);
+            // ✅ Direct Backend Redirect (100% Guaranteed)
+            $separator = str_contains($linkLogin, '?') ? '&' : '?';
+            $loginUrl = $linkLogin . $separator . 'username=' . urlencode($request->mobile) . '&password=' . urlencode($request->mobile);
+            return redirect($loginUrl);
         }
 
-        // Fallback for dev/browser testing (no MikroTik link present)
+        // Fallback: dev mode, no router connected
         return redirect('/plans')->with('success', 'OTP Verified! Please choose a plan.');
 
     }
@@ -325,13 +383,13 @@ class AuthController extends Controller
         }
 
         $session = \App\Models\WifiSession::where('mac_address', $mac)
-                               ->where('logout_at', null)
-                               ->latest()
-                               ->first();
+            ->where('logout_at', null)
+            ->latest()
+            ->first();
 
         if ($session) {
             $session->update([
-                'logout_at'  => Carbon::now(),
+                'logout_at' => Carbon::now(),
                 'expires_at' => Carbon::now(), // expire immediately
             ]);
         }
@@ -343,48 +401,48 @@ class AuthController extends Controller
     public function hotspotLogin(Request $request)
     {
         $mac = $request->mac;
-        $ip  = $request->ip;
+        $ip = $request->ip;
 
         // Step 1: Find existing session by MAC
         $session = WifiSession::where('mac_address', $mac)
-        ->latest()
-        ->first();
+            ->latest()
+            ->first();
 
-        if(!$session){
-            return view('login', compact('mac','ip'));
+        if (!$session) {
+            return view('login', compact('mac', 'ip'));
         }
 
         $user = $session->user;
 
         // Step 2: Check 15 days rule
 
-        if(!$user->last_verified_at || $user->last_verified_at->diffInDays(now()) > 15){
-            return view('login', compact('mac','ip'));
+        if (!$user->last_verified_at || $user->last_verified_at->diffInDays(now()) > 15) {
+            return view('login', compact('mac', 'ip'));
         }
 
         // Step 3: Check active session
         // $isActive = now()->diffInMinutes($session->login_at) < $session->duration_minutes;
         $isActive = $session->expires_at > now();
 
-        if($isActive){
+        if ($isActive) {
 
             // AUTO LOGIN
             return $this->redirectToRouter($user, $request);
         }
 
         // Step 4: Plan expired → show plans
-        return view('plans', compact('mac','ip'));
+        return view('plans', compact('mac', 'ip'));
     }
 
     //Step 19 redirect to Login page 
     private function redirectToRouter($user, $request)
     {
-        $link = $request->link_login;
-        if(!$link){
-            return "Connected (Dev Mode)";
-        }
+        $linkLogin = $request->input('link_login') ?? $request->input('link-login') ?? 'http://' . env('MIKROTIK_HOST', '192.168.88.1') . '/login';
 
-        return redirect($link . "?username=".$user->mobile. "&password=".$user->mobile);
+        $separator = str_contains($linkLogin, '?') ? '&' : '?';
+        $loginUrl = $linkLogin . $separator . 'username=' . urlencode($user->mobile) . '&password=' . urlencode($user->mobile);
+        
+        return redirect($loginUrl);
     }
 
     //Step : 21 check authenticaion first time 
@@ -393,29 +451,29 @@ class AuthController extends Controller
     {
         // 1️⃣ Check active session
         $activeSession = WifiSession::where('user_id', $user->id)
-        ->where('mac_address', $mac)
-        // ->whereRaw('TIMESTAMPDIFF(MINUTE, login_at, NOW()) < duration_minutes')
-        ->where('expires_at', '>', now())
-        ->latest()
-        ->first();
+            ->where('mac_address', $mac)
+            // ->whereRaw('TIMESTAMPDIFF(MINUTE, login_at, NOW()) < duration_minutes')
+            ->where('expires_at', '>', now())
+            ->latest()
+            ->first();
 
         if ($activeSession) {
             // return redirect('/success'); // allow internet
             return view('success', [
-                'mobile'       => $user->mobile,
-                'link_login'   => request()->input('link_login'),
+                'mobile' => $user->mobile,
+                'link_login' => request()->input('link_login'),
                 'routerSynced' => false,
             ]);
         }
 
         // 2️⃣ Check free plan used this month
         $usedFree = WifiSession::where('user_id', $user->id)
-        ->where('is_free', true)
-        // ->whereMonth('login_at', now()->month)
-        ->whereMonth('login_at', now()->format('m'))
-        ->whereYear('login_at', now()->format('Y'))
-        // ->whereYear('login_at', now()->year)
-        ->exists();
+            ->where('is_free', true)
+            // ->whereMonth('login_at', now()->month)
+            ->whereMonth('login_at', now()->format('m'))
+            ->whereYear('login_at', now()->format('Y'))
+            // ->whereYear('login_at', now()->year)
+            ->exists();
 
         // 3️⃣ If NOT used → give FREE
         if (!$usedFree) {
@@ -430,15 +488,15 @@ class AuthController extends Controller
                 // 'expires_at' => now()->addMinutes(30), // Step 21 Add this line
                 'is_free' => true,
                 // ✅ Ab yeh save honge
-                'device_name'      => $agent ?? 'Unknown',
-                'browser'          => $browser,
-                'os'               => $os,
+                'device_name' => $agent ?? 'Unknown',
+                'browser' => $browser,
+                'os' => $os,
             ]);
 
             // return redirect('/success');
             return view('success', [
-                'mobile'       => $user->mobile,
-                'link_login'   => request()->input('link_login'),
+                'mobile' => $user->mobile,
+                'link_login' => request()->input('link_login'),
                 'routerSynced' => false,
             ]);
         }

@@ -86,3 +86,8 @@ Route::get('/check-session', [UserController::class, 'checkSession']);
 //Step 26
 
 Route::post('/send-otp', [AuthController::class, 'sendOtp'])->middleware('throttle:3,1'); // 3 Otp request per minute
+
+//Step 27 payment sucessfull message 
+Route::get('/success', function () {
+    return "Payment Success";
+});

@@ -38,29 +38,47 @@ class MikrotikService
     {
         // ✅ Development Mode — No Router Needed
         if ($this->isDevelopmentMode()) {
-            Log::info("[MikroTik MOCK] User added → Mobile: $mobile | Profile: $profile | Rate-Limit: $rateLimit");
+            Log::info("[MikroTik MOCK] User added/updated → Mobile: $mobile | Profile: $profile");
             return true;
         }
 
         try {
             $client = $this->getClient();
 
-            $query = new Query('/ip/hotspot/user/add');
-            $query->equal('name',    $mobile);
-            $query->equal('password', $password);
-            $query->equal('profile',  $profile);
-            
-            if ($rateLimit) {
-                $query->equal('rate-limit', $rateLimit);
+            // 🔍 Check if user already exists
+            $existsQuery = new Query('/ip/hotspot/user/print');
+            $existsQuery->where('name', $mobile);
+            $existing = $client->query($existsQuery)->read();
+
+            if (!empty($existing)) {
+                // 🔄 Update existing user
+                $userId = $existing[0]['.id'];
+                $updateQuery = new Query('/ip/hotspot/user/set');
+                $updateQuery->equal('.id', $userId);
+                $updateQuery->equal('password', $password);
+                $updateQuery->equal('profile', $profile);
+                if ($rateLimit) {
+                    $updateQuery->equal('rate-limit', $rateLimit);
+                }
+                $client->query($updateQuery)->read();
+                Log::info("[MikroTik] User updated successfully → $mobile");
+            } else {
+                // ✨ Add new user
+                $addQuery = new Query('/ip/hotspot/user/add');
+                $addQuery->equal('name', $mobile);
+                $addQuery->equal('password', $password);
+                $addQuery->equal('profile', $profile);
+                if ($rateLimit) {
+                    $addQuery->equal('rate-limit', $rateLimit);
+                }
+                $client->query($addQuery)->read();
+                Log::info("[MikroTik] User created successfully → $mobile");
             }
 
-            $client->query($query)->read();
-
-            Log::info("[MikroTik] User created successfully → $mobile (Rate-Limit: $rateLimit)");
             return true;
 
         } catch (Exception $e) {
-            Log::error("[MikroTik ERROR] Failed to add user $mobile → " . $e->getMessage());
+            Log::error("[MikroTik ERROR] Transaction failed for $mobile → " . $e->getMessage());
             return false;
         }
     }
@@ -136,6 +154,25 @@ class MikrotikService
         } catch (Exception $e) {
             Log::error("[MikroTik ERROR] getActiveUsers failed → " . $e->getMessage());
             return [];
+        }
+    }
+
+    public function isUserActive(string $mobile): bool
+    {
+        if ($this->isDevelopmentMode()) {
+            return true;
+        }
+
+        try {
+            $client = $this->getClient();
+            $query = new Query('/ip/hotspot/active/print');
+            $query->where('user', $mobile);
+            $response = $client->query($query)->read();
+
+            return !empty($response);
+        } catch (Exception $e) {
+            Log::error("[MikroTik ERROR] isUserActive check failed → " . $e->getMessage());
+            return false;
         }
     }
 

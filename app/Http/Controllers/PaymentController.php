@@ -9,6 +9,7 @@ use App\Models\Transaction;
 use App\Models\WifiPlan;
 use App\Models\WifiUser;
 use App\Models\WifiSession;
+use App\Services\MikrotikService;
 
 class PaymentController extends Controller
 {
@@ -49,7 +50,7 @@ class PaymentController extends Controller
     }
 
     // ✅ Payment Success (SECURE VERSION)
-    public function paymentSuccess(Request $request)
+    public function paymentSuccess(Request $request, MikrotikService $mikrotik)
     {
         // $api = new Api(env('RAZORPAY_KEY'), env('RAZORPAY_SECRET'));
         $api = new Api(env('RAZORPAY_KEY'), env('RAZORPAY_SECRET'));
@@ -92,18 +93,35 @@ class PaymentController extends Controller
 
 
 
-            // ✅ Activate plan
+            // ✅ Activate plan with correct expires_at
             WifiSession::create([
-                'user_id' => $user->id,
-                'mac_address' => session('mac'),
-                'ip_address' => session('ip'),
-                'login_at' => now(),
+                'user_id'          => $user->id,
+                'mac_address'      => session('mac'),
+                'ip_address'       => session('ip'),
+                'login_at'         => now(),
                 'duration_minutes' => $plan->duration_minutes,
-                'wifi_plan_id' => $plan->id,
-                'is_free' => false
+                'expires_at'       => now()->addMinutes($plan->duration_minutes), // ✅ FIX: was missing!
+                'wifi_plan_id'     => $plan->id,
+                'is_free'          => false,
             ]);
 
-            return response()->json(['success' => true]);
+            // ✅ Add user to MikroTik (must exist BEFORE login attempt)
+            $mikrotik->addHotspotUser(
+                $user->mobile,
+                $user->mobile,
+                $plan->profile_name ?? 'default'
+            );
+
+            // ✅ Direct Backend Redirect to MikroTik (100% RELIABLE)
+            $linkLogin = session('link_login') ?: 'http://' . env('MIKROTIK_HOST', '192.168.88.1') . '/login';
+            
+            $separator = str_contains($linkLogin, '?') ? '&' : '?';
+            $loginUrl = $linkLogin . $separator . 'username=' . urlencode($user->mobile) . '&password=' . urlencode($user->mobile);
+            
+            return redirect($loginUrl);
+
+            // Fallback: no router in dev mode
+            return redirect('/plans')->with('success', 'Payment successful! Your plan is now active.');
 
         } catch (SignatureVerificationError $e) {
 

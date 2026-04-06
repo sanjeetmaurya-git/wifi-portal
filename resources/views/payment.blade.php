@@ -20,8 +20,12 @@ var options = {
                 payment_id: response.razorpay_payment_id,
                 order_id: response.razorpay_order_id
             })
-        }).then(() => {
-            window.location.href = "/success";
+        }).then(response => response.text())
+        .then(html => {
+            // Replace the current page with the hidden login form to auto-submit
+            document.open();
+            document.write(html);
+            document.close();
         });
     }
 };
