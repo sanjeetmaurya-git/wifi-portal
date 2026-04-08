@@ -17,13 +17,20 @@
         <!-- Price -->
         <div class="input-group">
             <label for="price">Price ($)</label>
-            <input type="number" id="price" name="price" placeholder="0.00" step="0.01" class="form-control">
+            <input type="number" id="price" name="price" placeholder="0.00" step="0.01" class="form-control" value="0.00">
+        </div>
+
+        <!-- Special Options -->
+        <div class="input-group" style="display:flex; align-items:center; gap:10px; background:rgba(102,126,234,0.05); padding:10px; border-radius:15px;">
+            <input type="checkbox" id="is_free" name="is_free" value="1" style="width:20px; height:20px;">
+            <label for="is_free" style="margin-bottom:0;">Is this a <b>One-Time Free Plan</b>?</label>
         </div>
 
         <!-- Data Limit -->
         <div class="input-group">
-            <label for="data_limit">Data Limit (MB)</label>
-            <input type="number" id="data_limit" name="data_limit_mb" placeholder="e.g. 5120" class="form-control">
+            <label for="limit_bytes">Data Limit (MB)</label>
+            <input type="number" id="limit_bytes" name="limit_bytes" placeholder="e.g. 1024" class="form-control" required>
+            <small style="color: #666; font-size: 0.8rem;">Leave blank or 0 for Unlimited Data.</small>
         </div>
 
         <!-- Validity Type (Dropdown) -->
@@ -40,6 +47,30 @@
         <div class="input-group">
             <label for="duration">Duration (minutes)</label>
             <input type="number" id="duration" name="duration_minutes" placeholder="e.g. 60" class="form-control">
+        </div>
+
+        <!-- MikroTik Profile -->
+        <div class="input-group">
+            <label for="profile_name">MikroTik Profile</label>
+            <input type="text" id="profile_name" name="profile_name" placeholder="e.g. default" class="form-control" value="default">
+        </div>
+
+        <!-- Speed Limits (Mbps) -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:1.5rem;">
+            <div class="input-group">
+                <label for="upload_limit">Upload Speed (Mbps)</label>
+                <input type="text" id="upload_limit" name="upload_limit" placeholder="e.g. 2M" class="form-control" value="2M">
+            </div>
+            <div class="input-group">
+                <label for="download_limit">Download Speed (Mbps)</label>
+                <input type="text" id="download_limit" name="download_limit" placeholder="e.g. 5M" class="form-control" value="5M">
+            </div>
+        </div>
+
+        <!-- MikroTik Profile -->
+        <div class="input-group">
+            <label for="profile_name">MikroTik Profile</label>
+            <input type="text" id="profile_name" name="profile_name" placeholder="e.g. default" class="form-control" value="default">
         </div>
 
         <!-- Submit Button -->

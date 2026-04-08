@@ -1,0 +1,17 @@
+[
+    {
+        ".id": "*7",
+        "name": "8874599237",
+        "password": "8874599237",
+        "profile": "default",
+        "limit-uptime": "20m",
+        "limit-bytes-total": "20971520",
+        "uptime": "4h58m2s",
+        "bytes-in": "25004222",
+        "bytes-out": "210332329",
+        "packets-in": "79316",
+        "packets-out": "171457",
+        "dynamic": "false",
+        "disabled": "false"
+    }
+]

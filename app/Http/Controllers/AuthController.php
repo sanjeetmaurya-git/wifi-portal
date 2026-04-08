@@ -9,6 +9,7 @@ use App\Models\WifiUser;
 use App\Models\WifiSession;
 use App\Services\MikrotikService;
 use App\Models\WifiPlan;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
@@ -22,43 +23,127 @@ class AuthController extends Controller
     // login page
     public function loginPage(Request $request)
     {
-        $mac = $request->input('mac') ?: $request->input('mac-address') ?: 'unknown';
-        $linkLogin = $request->input('link_login') ?? $request->input('link-login');
+        $mac        = $request->input('mac') ?: $request->input('mac-address');
+        $linkLogin  = $request->input('link_login') ?? $request->input('link-login');
+        $ip         = $request->input('ip') ?: $request->input('ip-address') ?: $request->ip();
 
-        // 🔥 15-DAY INTELLIGENCE: Check if user exists and was verified in last 15 days
-        $user = WifiUser::where('mac_address', $mac)
-            ->where('last_verified_at', '>', Carbon::now()->subDays(15))
-            ->first();
+        // 💾 Always persist the router's link_login in the session from the very first hit
+        if ($linkLogin) {
+            session(['link_login' => $linkLogin]);
+        }
 
-        if ($user) {
-            // User is verified! Now check for an active plan session
-            $activeSession = WifiSession::where('user_id', $user->id)
-                ->where('mac_address', $mac)
-                ->where('expires_at', '>', Carbon::now())
-                ->latest()
+        // 🔁 AUTO-LOGIN: If this MAC is verified within 15 days and has an active plan
+        if ($mac) {
+            $user = WifiUser::where('mac_address', $mac)
+                ->where('last_verified_at', '>', Carbon::now()->subDays(15))
                 ->first();
 
-            if ($activeSession) {
-                // Instantly Auto-Authorize on MikroTik
-                return $this->redirectToRouter($user, $request);
-            } else {
-                // Verified but no active plan -> Show Plans
-                $plans = WifiPlan::where('is_active', true)->get();
-                return view('plans', [
-                    'plans' => $plans,
-                    'mobile' => $user->mobile,
-                    'mac' => $mac,
-                    'ip' => $request->ip(),
-                    'link_login' => $linkLogin
-                ]);
+            if ($user) {
+                $activeSession = WifiSession::where('user_id', $user->id)
+                    ->where('expires_at', '>', Carbon::now())
+                    ->whereNull('logout_at')
+                    ->latest()
+                    ->first();
+
+                // 📦 QUEUED PLAN AUTO-ACTIVATION
+                if (!$activeSession) {
+                    $queuedSession = WifiSession::where('user_id', $user->id)
+                        ->where('expires_at', '>', Carbon::now())
+                        ->where('login_at', '>', Carbon::now()) // Starts in future
+                        ->first();
+
+                    if ($queuedSession) {
+                        Log::info("[Queue] Activating queued plan for " . $user->mobile);
+                        $queuedSession->update(['login_at' => now()]);
+                        // Recalculate expiry
+                        $queuedSession->update(['expires_at' => now()->addMinutes($queuedSession->duration_minutes)]);
+                        $activeSession = $queuedSession;
+
+                        // Push to MikroTik
+                        $mikrotik = new \App\Services\MikrotikService();
+                        $plan = $activeSession->plan;
+                        if ($plan) {
+                             $mikrotik->addHotspotUser(
+                                $user->mobile,
+                                $user->mobile,
+                                $plan->profile_name ?: 'plan_' . $plan->id,
+                                $plan->duration_minutes . 'm',
+                                $plan->limit_bytes ? ($plan->limit_bytes . 'M') : null,
+                                ($plan->upload_limit && $plan->download_limit) ? "{$plan->upload_limit}/{$plan->download_limit}" : null,
+                                $mac
+                            );
+                        }
+                    }
+                }
+
+                if ($activeSession) {
+                    // ✅ User has an active plan in DB.
+                    // Kick active session to ensure fresh login works
+                    $this->mikrotik->removeActiveSession($user->mobile);
+
+                    // Always persist session data.
+                    $savedLinkLogin = $linkLogin ?: session('link_login');
+                    session([
+                        'mobile'     => $user->mobile,
+                        'mac'        => $mac,
+                        'ip'         => $ip,
+                        'link_login' => $savedLinkLogin,
+                    ]);
+
+                    // 🔑 KEY LOGIC:
+                    // If MikroTik redirected here (link_login is present in URL), the user
+                    // is NOT yet authenticated on the router for this session.
+                    if ($savedLinkLogin) {
+                        return $this->buildHotspotLoginForm($user, $savedLinkLogin);
+                    }
+
+                    // No link_login = user browsed directly to /login (not from MikroTik).
+                    // Just show the status/success page.
+                    return redirect('/success');
+                } else {
+                    // ✅ User is verified but plan expired → skip login, go to plans
+                    session([
+                        'mobile'     => $user->mobile,
+                        'mac'        => $mac,
+                        'ip'         => $ip,
+                        'link_login' => $linkLogin ?: session('link_login'),
+                    ]);
+                    return redirect('/plans');
+                }
             }
         }
 
-        // NO SESSION OR EXPIRED: Show Login form
+        // 🆕 New user or no MAC → Show login form
         return view('login', [
-            'mac' => $mac,
-            'ip' => $request->ip(),
-            'link_login' => $linkLogin
+            'mac'        => $mac,
+            'ip'         => $ip,
+            'link_login' => $linkLogin,
+        ]);
+    }
+
+    /**
+     * Build an auto-submitting POST form to authorize the user on MikroTik.
+     *
+     * CRITICAL NOTES:
+     * 1. MikroTik ONLY accepts POST for hotspot login — GET redirects are ignored.
+     * 2. wifi.local is replaced with the router IP (192.168.88.1) because wifi.local
+     *    may not resolve via DNS on all Android/iOS devices quickly enough.
+     * 3. dst points to our /success page (in walled garden) — NOT google.com.
+     *    google.com may be intercepted before the session activates, causing a loop.
+     */
+    private function buildHotspotLoginForm($user, $linkLogin)
+    {
+        // Replace hotspot DNS name with actual router IP for universal device compatibility
+        $routerIp  = env('MIKROTIK_HOST', '192.168.88.1');
+        $loginUrl  = str_replace('wifi.local', $routerIp, $linkLogin ?? "http://{$routerIp}/login");
+        $mac       = session('mac') ?? $user->mac_address ?? '';
+
+        return view('mikrotik-login', [
+            'link_login' => $loginUrl,
+            'username'   => $user->mobile,
+            'password'   => $user->mobile,
+            'mac'        => $mac,
+            'dst'        => url('/success'),
         ]);
     }
 
@@ -178,37 +263,15 @@ class AuthController extends Controller
         $browser = str_contains($agent, 'Chrome') ? 'Chrome' : 'Unknown';
         $os = str_contains($agent, 'Android') ? 'Android' : 'Unknown';
 
-        // 6️⃣ Give FREE Trial if eligible
-        $usedFreeThisMonth = WifiSession::where('user_id', $user->id)
-            ->where('is_free', true)
-            ->whereMonth('login_at', now()->format('m'))
-            ->exists();
+        // 7️⃣ PREPARE FOR PLAN SELECTION: Store session data and redirect
+        session([
+            'mobile' => $user->mobile,
+            'mac' => $mac,
+            'ip' => $ip,
+            'link_login' => $request->input('link_login')
+        ]);
 
-        if (!$usedFreeThisMonth) {
-            $plan = \App\Models\WifiPlan::where('name', 'Free Plan')->where('is_active', true)->first();
-            $duration = $plan ? $plan->duration_minutes : 30;
-
-            WifiSession::create([
-                'user_id' => $user->id,
-                'mac_address' => $mac,
-                'ip_address' => $ip,
-                'login_at' => now(),
-                'duration_minutes' => $duration,
-                'expires_at' => now()->addMinutes($duration),
-                'is_free' => true,
-                'device_name' => $agent ?? 'Unknown',
-                'browser' => $browser,
-                'os' => $os,
-            ]);
-        }
-
-        // 7️⃣ Stop the Infinite Reload Loop — Add User to Router + Handshake Redirect
-        try {
-            $mikrotik->addHotspotUser($user->mobile, $user->mobile, 'default', null);
-        } catch (\Exception $e) { /* Already exists */
-        }
-
-        return $this->redirectToRouter($user, $request);
+        return redirect('/plans');
     }
 
     // disconnect
@@ -226,12 +289,54 @@ class AuthController extends Controller
         return redirect('/login?mac=' . $mac)->with('success', 'Disconnected.');
     }
 
+    // Connection Dashboard — shown after MikroTik redirects to dst=/success
+    public function success(Request $request)
+    {
+        $mobile = session('mobile');
+        if (!$mobile) {
+            return redirect('/login')->with('error', 'Session expired. Please login again.');
+        }
+
+        $user = WifiUser::where('mobile', $mobile)->first();
+        if (!$user) {
+            return redirect('/login')->with('error', 'User not found. Please login again.');
+        }
+
+        // Find the most recent active session for this user (by MAC or by user_id)
+        $mac = session('mac') ?? $user->mac_address;
+        $session = WifiSession::where('user_id', $user->id)
+            ->where('expires_at', '>', now())
+            ->latest()
+            ->first();
+
+        return view('success', compact('user', 'session'));
+    }
+
     // Step 19 redirect to Router (The Final Authorize)
     private function redirectToRouter($user, $request)
     {
-        $linkLogin = $request->input('link_login') ?? $request->input('link-login') ?? 'http://' . env('MIKROTIK_HOST', '192.168.88.1') . '/login';
+        // 🚀 SMART DNS DETECTION: Prioritize wifi.local over IP
+        $linkLogin = $request->input('link_login') ?? $request->input('link-login') ?? session('link_login') ?? 'http://wifi.local/login';
+
         $separator = str_contains($linkLogin, '?') ? '&' : '?';
         $loginUrl = $linkLogin . $separator . 'username=' . urlencode($user->mobile) . '&password=' . urlencode($user->mobile);
         return redirect($loginUrl);
+    }
+
+    // 🔬 DIAGNOSTIC TOOL: Test MikroTik Connection
+    public function testMikrotik()
+    {
+        try {
+            $mikrotik = new MikrotikService();
+            $client = $mikrotik->connect();
+
+            if ($client === true) {
+                return "<h1>✅ MOCK MODE ACTIVE</h1><p>The system is in Development Mode (MIKROTIK_CONNECTED=false).</p>";
+            }
+
+            return "<h1>✅ SUCCESS!</h1><p>Your Laravel server is now talking to the MikroTik router successfully.</p>";
+        } catch (\Exception $e) {
+            return "<h1>❌ CONNECTION FAILED!</h1><p>Error: " . $e->getMessage() . "</p><p>Check your .env settings and IP -> Services -> API in Winbox.</p>";
+        }
     }
 }

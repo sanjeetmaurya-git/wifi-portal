@@ -29,20 +29,21 @@ class MikrotikService
             'user' => $router ? $router->username : env('MIKROTIK_USER', 'apiuser'),
             'pass' => $router ? $router->password : env('MIKROTIK_PASS', 'password'),
             'port' => $router ? (int) $router->port : (int) env('MIKROTIK_PORT', 8728),
+            'timeout' => 2, // ⚡ Fail fast in 2 seconds instead of 5
         ]);
 
         return new Client($config);
     }
 
     public function addHotspotUser(
-        string $mobile, 
-        string $password, 
-        string $profile = 'default', 
-        string $uptimeLimit = null, 
+        string $mobile,
+        string $password,
+        string $profile = 'default',
+        string $uptimeLimit = null,
         string $bytesLimit = null,
-        string $rateLimit = null
-    ): bool
-    {
+        string $rateLimit = null,
+        string $mac = null
+    ): bool {
         // ✅ Development Mode — No Router Needed
         if ($this->isDevelopmentMode()) {
             Log::info("[MikroTik MOCK] User added/updated → Mobile: $mobile | Profile: $profile | Limits: $uptimeLimit / $bytesLimit");
@@ -52,44 +53,121 @@ class MikrotikService
         try {
             $client = $this->getClient();
 
+            // 🛠️ DYNAMIC PROFILE ENFORCEMENT
+            // We create a specific profile for this exact data limit if it's not 'default'
+            if ($profile !== 'default') {
+                $profQuery = new Query('/ip/hotspot/user/profile/print');
+                $profQuery->where('name', $profile);
+                $existingProf = $client->query($profQuery)->read();
+
+                $profParams = [
+                    'name' => $profile,
+                    // 'transparent-proxy' => 'yes'
+                    'status-autorefresh' => '1m'
+                ];
+                if ($bytesLimit)
+                    $profParams['limit-bytes-total'] = $bytesLimit;
+                if ($uptimeLimit)
+                    $profParams['session-timeout'] = $uptimeLimit;
+                if ($rateLimit)
+                    $profParams['rate-limit'] = $rateLimit;
+
+                if (empty($existingProf)) {
+                    $addProf = new Query('/ip/hotspot/user/profile/add');
+                    foreach ($profParams as $k => $v)
+                        $addProf->equal($k, (string) $v);
+                    $response = $client->query($addProf)->read();
+                    Log::info("[MikroTik] Add Profile Response: " . json_encode($response));
+                    if (isset($response['after']['message'])) {
+                        Log::error("MikroTik Profile Add Error: " . $response['after']['message']);
+                    }
+                } else {
+                    $setProf = new Query('/ip/hotspot/user/profile/set');
+                    $setProf->equal('.id', $existingProf[0]['.id']);
+                    foreach ($profParams as $k => $v)
+                        $setProf->equal($k, (string) $v);
+                    $response = $client->query($setProf)->read();
+                    Log::info("[MikroTik] Set Profile Response: " . json_encode($response));
+                    if (isset($response['after']['message'])) {
+                        Log::error("MikroTik Profile Set Error: " . $response['after']['message']);
+                    }
+                }
+            }
+
             // 🔍 Check if user already exists
             $existsQuery = new Query('/ip/hotspot/user/print');
             $existsQuery->where('name', $mobile);
             $existing = $client->query($existsQuery)->read();
 
-            // Prepare common parameters
+            // Prepare common parameters for the USER
             $params = [
                 'password' => $password,
                 'profile'  => $profile
             ];
-
-            if ($uptimeLimit) $params['limit-uptime'] = $uptimeLimit;
-            if ($bytesLimit)  $params['limit-bytes-total'] = $bytesLimit;
-            if ($rateLimit)   $params['rate-limit'] = $rateLimit;
+ 
+            // Individual user-level limits
+            if ($uptimeLimit) $params['limit-uptime'] = (string)$uptimeLimit;
+            if ($bytesLimit)  $params['limit-bytes-total'] = (string)$bytesLimit;
+            
+            // ❌ Removed rate-limit from here because MikroTik rejects it on /ip/hotspot/user/add
+            // Speed limits MUST be handled via the Profile.
 
             if (!empty($existing)) {
                 // 🔄 Update existing user
                 $userId = $existing[0]['.id'];
                 $updateQuery = new Query('/ip/hotspot/user/set');
                 $updateQuery->equal('.id', $userId);
-                
+
                 foreach ($params as $key => $value) {
-                    $updateQuery->equal($key, (string)$value);
+                    $updateQuery->equal($key, (string) $value);
                 }
-                
-                $client->query($updateQuery)->read();
-                Log::info("[MikroTik] User updated successfully with limits → $mobile");
+
+                $response = $client->query($updateQuery)->read();
+                if (isset($response['after']['message'])) {
+                    throw new Exception("MikroTik User Update Failed: " . $response['after']['message']);
+                }
+                Log::info("[MikroTik] User updated successfully → $mobile");
+
+                // ✨ CRITICAL: Reset user counters
+                $client->query((new Query('/ip/hotspot/user/reset-counters'))->equal('.id', $userId))->read();
+
             } else {
                 // ✨ Add new user
                 $addQuery = new Query('/ip/hotspot/user/add');
                 $addQuery->equal('name', $mobile);
-                
+
                 foreach ($params as $key => $value) {
-                    $addQuery->equal($key, (string)$value);
+                    $addQuery->equal($key, (string) $value);
                 }
-                
-                $client->query($addQuery)->read();
-                Log::info("[MikroTik] User created successfully with limits → $mobile");
+
+                $response = $client->query($addQuery)->read();
+                if (isset($response['after']['message'])) {
+                    throw new Exception("MikroTik User Creation Failed: " . $response['after']['message']);
+                }
+                Log::info("[MikroTik] User created successfully → $mobile");
+            }
+
+            // ✨ CRITICAL: Kick any existing active session so the new limits apply immediately on the fresh login.
+            $activeQuery = new Query('/ip/hotspot/active/print');
+            $activeQuery->where('user', $mobile);
+            $activeSessions = $client->query($activeQuery)->read();
+
+            foreach ($activeSessions as $active) {
+                $removeActive = new Query('/ip/hotspot/active/remove');
+                $removeActive->equal('.id', $active['.id']);
+                $client->query($removeActive)->read();
+            }
+
+            // 🧹 CLEANUP: Remove Host entry to force a fresh authorization
+            if ($mac && $mac !== 'unknown') {
+                $hostQuery = new Query('/ip/hotspot/host/print');
+                $hostQuery->where('mac-address', $mac);
+                $hosts = $client->query($hostQuery)->read();
+                foreach ($hosts as $host) {
+                    $removeHost = new Query('/ip/hotspot/host/remove');
+                    $removeHost->equal('.id', $host['.id']);
+                    $client->query($removeHost)->read();
+                }
             }
 
             return true;
@@ -137,6 +215,33 @@ class MikrotikService
         }
     }
 
+    /**
+     * 🔥 REMOVE ACTIVE SESSION (VERY IMPORTANT)
+     * This kicks the user out of the 'Active' tab so they can log in fresh.
+     */
+    public function removeActiveSession(string $mobile): bool
+    {
+        if ($this->isDevelopmentMode()) return true;
+
+        try {
+            $client = $this->getClient();
+            $query = new Query('/ip/hotspot/active/print');
+            $query->where('user', $mobile);
+            $active = $client->query($query)->read();
+
+            foreach ($active as $session) {
+                $remove = new Query('/ip/hotspot/active/remove');
+                $remove->equal('.id', $session['.id']);
+                $client->query($remove)->read();
+            }
+            Log::info("[MikroTik] Kicked active sessions for $mobile");
+            return true;
+        } catch (Exception $e) {
+            Log::error("[MikroTik] Error removing active session: " . $e->getMessage());
+            return false;
+        }
+    }
+
     public function userExists(string $mobile): bool
     {
         if ($this->isDevelopmentMode()) {
@@ -145,8 +250,8 @@ class MikrotikService
         }
 
         try {
-            $client  = $this->getClient();
-            $query   = new Query('/ip/hotspot/user/print');
+            $client = $this->getClient();
+            $query = new Query('/ip/hotspot/user/print');
             $query->where('name', $mobile);
             $response = $client->query($query)->read();
 
@@ -198,7 +303,7 @@ class MikrotikService
     {
         if ($this->isDevelopmentMode()) {
             // Return a dummy client or just null if we handle it in controller
-            return true; 
+            return true;
         }
 
         return $this->getClient();

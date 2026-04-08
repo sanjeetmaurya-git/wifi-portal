@@ -1,7 +1,7 @@
 # 📶 **MIKROTIK CAPTIVE PORTAL — SAAS MASTER MASTER MASTER PLAN** 🚀
 
-## 📜 **CURRENT STATUS: PHASE 3 (LIMITS & ENFORCEMENT) 🔓**
-The system is now **Functional, Paying, and Verified**. We are now moving to **Limit Enforcement** to protect your revenue.
+## 📜 **CURRENT STATUS: PHASE 4 (THE ADMIN CASTLE) 🏰**
+The system is now **Functional, Paying, and Enforced**. We are now building the **Admin Command Center** for revenue analytics and KYC forensics.
 
 ---
 
@@ -27,19 +27,22 @@ graph TD
 ## 🛠️ **PHASE PROGRESS:**
 
 ### ✅ **PHASE 1: REDIRECT & POPUP (COMPLETE)**
-*   **Redirector:** MikroTik `hotspot/login.html` meta-refresh to Laravel. 🚀
-*   **Auto-Popup:** Walled Garden bypass to force mobile "Sign in to network" notifications. 🚀
-*   **15-Day Brain:** MAC recognition to bypass login for returning users. 🚀
+*   **Redirector:** MikroTik `hotspot/login.html` meta-refresh to Laravel. 
+*   **Auto-Popup:** Walled Garden bypass to force mobile "Sign in to network" notifications. 
+*   **15-Day Brain:** MAC recognition to bypass login for returning users. 
 
 ### ✅ **PHASE 2: KYC & VERIFICATION (COMPLETE)**
-*   **Verification:** Mandatory Name, Address, and Mobile data capture (Legal Forensics). 🚀
-*   **ID Check:** Optional Aadhar/ID details for 14-month compliance. 🚀
-*   **OTP Brain:** SMS verification integrated with the "SaaS Brain". 🚀
+*   **Verification:** Mandatory Name, Address, and Mobile data capture (Legal Forensics). 
+*   **ID Check:** Optional Aadhar/ID details for 14-month compliance. 
+*   **OTP Brain:** SMS verification integrated with the "SaaS Brain". 
 
-### 🚧 **PHASE 3: LIMIT ENFORCEMENT & SHIELD (CURRENT)**
+### ✅ **PHASE 3: LIMIT ENFORCEMENT & SHIELD (COMPLETE)**
 *   **Bandwidth Control:** Apply `limit-bytes-total` (e.g., 1GB) via API. 🚀
 *   **Time Control:** Apply `limit-uptime` (e.g., 24 Hours) via API. 🚀
 *   **Profile Mapping:** Link MikroTik profiles (1MB/5MB/10MB) to Laravel plans. 🚀
+*   **Speed Control (NEW):** Direct bandwidth shaping (e.g. 2M/5M) via `rate-limit` parameter. 🚀
+*   **Free Trial Shield (NEW):** One-time "Claim" logic that blocks repeat free usage. 🚀
+*   **Forced Purchase Flow (NEW):** Redirect all users (new/returning) to plan selection before internet access. 🚀
 
 ---
 

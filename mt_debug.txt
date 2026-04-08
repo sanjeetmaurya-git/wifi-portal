@@ -1,0 +1,23 @@
+﻿CONNECTED TO: 192.168.88.1 ✅
+
+--- RECENT HOTSPOT LOGS ---
+[2026-04-08 14:22:13] 7004579654 (192.168.88.85): login failed: invalid username or password
+[2026-04-08 14:22:11] 7004579654 (192.168.88.85): trying to log in by http-pap
+[2026-04-08 14:22:10] 7004579654 (192.168.88.85): login failed: invalid username or password
+[2026-04-08 14:22:08] 7004579654 (192.168.88.85): trying to log in by http-pap
+[2026-04-08 14:22:07] 7004579654 (192.168.88.85): login failed: invalid username or password
+[2026-04-08 14:22:05] 7004579654 (192.168.88.85): trying to log in by http-pap
+[2026-04-08 14:22:05] 7004579654 (192.168.88.85): login failed: invalid username or password
+[2026-04-08 14:22:03] 7004579654 (192.168.88.85): trying to log in by http-pap
+[2026-04-08 14:22:02] 7004579654 (192.168.88.85): login failed: invalid username or password
+[2026-04-08 14:22:00] 7004579654 (192.168.88.85): trying to log in by http-pap
+[2026-04-08 14:21:59] 7004579654 (192.168.88.85): login failed: invalid username or password
+[2026-04-08 14:21:57] 7004579654 (192.168.88.85): trying to log in by http-pap
+[2026-04-08 14:21:57] 7004579654 (192.168.88.85): login failed: invalid username or password
+[2026-04-08 14:21:55] 7004579654 (192.168.88.85): trying to log in by http-pap
+[2026-04-08 14:21:54] 7004579654 (192.168.88.85): login failed: invalid username or password
+[2026-04-08 14:21:52] 7004579654 (192.168.88.85): trying to log in by http-pap
+
+--- PENDING USERS (added by us recently) ---
+- test999 (Profile: default)
+- test12345 (Profile: default)

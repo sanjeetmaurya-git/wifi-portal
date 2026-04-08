@@ -19,6 +19,8 @@ class WifiSession extends Model
         'browser',
         'os',
         'expires_at',
+        'wifi_plan_id',
+        'is_free',
     ];
 
     //users info session 

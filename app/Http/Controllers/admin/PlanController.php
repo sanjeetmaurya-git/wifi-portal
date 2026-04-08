@@ -55,9 +55,18 @@ class PlanController extends Controller
     // user facing plans 
     public function userPlans()
     {
-        $plans = WifiPlan::where('is_active', true)
-            ->where('price', '>', 0) // Only show paid plans
-            ->get();
-        return view('plans', compact('plans'));
+        $mobile = session('mobile');
+        $user = \App\Models\WifiUser::where('mobile', $mobile)->first();
+        
+        $claimedFreePlans = [];
+        if ($user) {
+            $claimedFreePlans = \App\Models\WifiSession::where('user_id', $user->id)
+                ->where('is_free', true)
+                ->pluck('wifi_plan_id')
+                ->toArray();
+        }
+
+        $plans = WifiPlan::where('is_active', true)->get();
+        return view('plans', compact('plans', 'claimedFreePlans'));
     }
 }

@@ -88,7 +88,34 @@ Route::get('/check-session', [UserController::class, 'checkSession']);
 
 Route::post('/send-otp', [AuthController::class, 'sendOtp'])->middleware('throttle:3,1'); // 3 Otp request per minute
 
-//Step 27 payment sucessfull message 
-Route::get('/success', function () {
-    return "Payment Success";
+// Diagnosis
+Route::get('/test-mikrotik', [AuthController::class, 'testMikrotik']);
+
+// Connection Success Page
+Route::get('/success', [AuthController::class, 'success'])->name('success');
+
+// ✅ KEY ROUTE: Fresh page that auto-POSTs to MikroTik after Razorpay payment
+// JS in payment.blade.php redirects here — full page load = reliable form auto-submit
+Route::get('/activate-internet', [PaymentController::class, 'activateInternet']);
+
+// 🔬 Diagnostic: test MikroTik connection + show what link_login is in session
+Route::get('/test-api', function () {
+    $linkLogin = session('link_login');
+    $mobile    = session('mobile');
+    $mac       = session('mac');
+    try {
+        $mikrotik = new \App\Services\MikrotikService();
+        $connected = $mikrotik->connect();
+        $status = $connected === true ? 'MOCK MODE (MIKROTIK_CONNECTED=false)' : 'CONNECTED ✅';
+    } catch (\Exception $e) {
+        $status = 'FAILED ❌: ' . $e->getMessage();
+    }
+    return response()->json([
+        'mikrotik_api'  => $status,
+        'session_mobile'=> $mobile ?? 'NOT SET',
+        'session_mac'   => $mac    ?? 'NOT SET',
+        'link_login'    => $linkLogin ?? 'NOT SET — user must access via MikroTik redirect first',
+        'env_host'      => env('MIKROTIK_HOST'),
+        'env_connected' => env('MIKROTIK_CONNECTED'),
+    ]);
 });

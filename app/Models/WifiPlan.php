@@ -10,10 +10,13 @@ class WifiPlan extends Model
         'name',
         'price',
         'duration_minutes',
+        'limit_bytes',
         'upload_limit',
         'download_limit',
         'data_limit_mb',
         'validity_type',
-        'is_active'
+        'is_active',
+        'is_free',
+        'profile_name'
     ];
 }

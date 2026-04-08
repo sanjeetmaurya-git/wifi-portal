@@ -21,12 +21,17 @@ var options = {
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_signature: response.razorpay_signature
             })
-        }).then(response => response.text())
-        .then(html => {
-            // Replace the current page with the hidden login form to auto-submit
-            document.open();
-            document.write(html);
-            document.close();
+        }).then(r => r.json())
+        .then(data => {
+            if (data.redirect) {
+                // Navigate browser to /activate-internet (full page load = reliable form auto-submit)
+                window.location.href = data.redirect;
+            } else if (data.error) {
+                alert('Payment error: ' + data.error);
+            }
+        }).catch(err => {
+            console.error('Payment callback error:', err);
+            alert('Payment processed but connection failed. Please contact support.');
         });
     }
 };
