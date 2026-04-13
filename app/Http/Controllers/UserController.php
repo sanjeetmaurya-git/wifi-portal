@@ -30,6 +30,28 @@ class UserController extends Controller
         return view('user.my_plans', compact('transactions','sessions') );
     }
 
+    // Profile Page (Shows KYC and links)
+    public function profile()
+    {
+        $mobile = session('mobile');
+        if (!$mobile) return redirect('/login');
+
+        $user = \App\Models\WifiUser::where('mobile', $mobile)->first();
+        return view('user.profile', compact('user'));
+    }
+
+    // Add another number (triggers OTP for the new number)
+    public function addSecondaryNumber(Request $request)
+    {
+        $request->validate(['secondary_mobile' => 'required|digits:10']);
+        
+        // Prepare a new session for the secondary number verification
+        session(['temp_mobile' => $request->secondary_mobile]);
+
+        // Redirect to AuthController to handle OTP sending
+        return redirect()->action([\App\Http\Controllers\AuthController::class, 'sendOtp'], ['mobile' => $request->secondary_mobile]);
+    }
+
     //Step 25 
     public function checkSession()
     {
@@ -59,5 +81,5 @@ class UserController extends Controller
         }
 
         return response()->json(['active' => true]);
-        }
+    }
 }

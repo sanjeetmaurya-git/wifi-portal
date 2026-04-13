@@ -13,10 +13,10 @@ Route::get('/', function () {
 
 
 //login, send otp, verify-Auth route
-Route::get('/login',[AuthController::class,'loginPage'])->name('login');
-Route::post('/send-otp',[AuthController::class,'sendOtp']);
-Route::post('/register-save',[AuthController::class,'saveRegistration'])->name('register.save');
-Route::post('/verify-otp',[AuthController::class,'verifyOtp']);
+Route::get('/login', [AuthController::class, 'loginPage'])->name('login');
+Route::post('/send-otp', [AuthController::class, 'sendOtp']);
+Route::post('/register-save', [AuthController::class, 'saveRegistration'])->name('register.save');
+Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
 
 // Route::view('/success', 'success');
 
@@ -28,26 +28,26 @@ Route::post('/admin/login', [AdminController::class, 'login']);
 // Admin Protected Routes
 Route::middleware(['admin.auth'])->group(function () {
     //admin dashboard (admin, users-list, sessions, otp-logs)
-    Route::get('/admin', [AdminController::class,'dashboard']);
-    Route::get('/admin/users', [AdminController::class,'users']);
-    Route::get('/admin/sessions', [AdminController::class,'sessions']);
-    Route::get('/admin/otp-logs', [AdminController::class,'otpLogs']);
-    
+    Route::get('/admin', [AdminController::class, 'dashboard']);
+    Route::get('/admin/users', [AdminController::class, 'users']);
+    Route::get('/admin/sessions', [AdminController::class, 'sessions']);
+    Route::get('/admin/otp-logs', [AdminController::class, 'otpLogs']);
+
     // admin analytics route 
-    Route::get('/admin/analytics-data', [AdminController::class,'analyticsData']);
-    
-    Route::get('/admin/active-sessions', [AdminController::class,'activeSessions']);
-    Route::post('/admin/disconnect-user', [AdminController::class,'disconnectUser']);
-    Route::get('/admin/usage',[AdminController::class,'usageStats']);  //step 11
-    Route::get('/admin/system-logs',[AdminController::class,'systemLogs']); //step 12
-    Route::get('/admin/router-status',[AdminController::class,'routerStatus']);
+    Route::get('/admin/analytics-data', [AdminController::class, 'analyticsData']);
+
+    Route::get('/admin/active-sessions', [AdminController::class, 'activeSessions']);
+    Route::post('/admin/disconnect-user', [AdminController::class, 'disconnectUser']);
+    Route::get('/admin/usage', [AdminController::class, 'usageStats']);  //step 11
+    Route::get('/admin/system-logs', [AdminController::class, 'systemLogs']); //step 12
+    Route::get('/admin/router-status', [AdminController::class, 'routerStatus']);
 
     // Step 20 Admin create wifi_plans
     Route::prefix('admin')->group(function () {
         Route::get('/plans', [PlanController::class, 'index']);
         Route::get('/plans/create', [PlanController::class, 'create']);
         Route::post('/plans', [PlanController::class, 'store']);
-    
+
         // 👇 ADD THESE
         Route::get('/plans/{id}/edit', [PlanController::class, 'edit']);
         Route::put('/plans/{id}', [PlanController::class, 'update']);
@@ -60,25 +60,26 @@ Route::middleware(['admin.auth'])->group(function () {
 
     // Step 23 
     Route::get('/admin/revenue-data', [AdminController::class, 'revenueData']);
+    Route::post('/admin/clear-all-sessions', [AdminController::class, 'clearAllSessions']);
 });
 
 // User Plan & Payment Routes
-Route::get('/plans', [PlanController::class, 'userPlans']); 
+Route::get('/plans', [PlanController::class, 'userPlans']);
 Route::post('/create-order', [PaymentController::class, 'createOrder']);
 Route::get('/payment-page', [PaymentController::class, 'paymentPage']);
 Route::post('/payment-success', [PaymentController::class, 'paymentSuccess']); //show payment sucess msg
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-// Step 24 
+//Step 24 
 Route::get('/my-plans', [UserController::class, 'myPlans']);
+Route::get('/profile', [UserController::class, 'profile']);
+Route::post('/add-secondary-number', [UserController::class, 'addSecondaryNumber']);
 
 //Step 25 
-Route::get('/dashboard', function () {
-    return view('user.dashboard');
-})->middleware('check.plan');
+Route::get('/usage', [App\Http\Controllers\UsageController::class, 'index'])->name('usage');
 
 Route::get('/dashboard', function () {
-    return view('user.dashboard');
+    return redirect()->route('usage');
 })->middleware('check.plan');
 
 //check active session 
@@ -101,8 +102,8 @@ Route::get('/activate-internet', [PaymentController::class, 'activateInternet'])
 // 🔬 Diagnostic: test MikroTik connection + show what link_login is in session
 Route::get('/test-api', function () {
     $linkLogin = session('link_login');
-    $mobile    = session('mobile');
-    $mac       = session('mac');
+    $mobile = session('mobile');
+    $mac = session('mac');
     try {
         $mikrotik = new \App\Services\MikrotikService();
         $connected = $mikrotik->connect();
@@ -111,11 +112,11 @@ Route::get('/test-api', function () {
         $status = 'FAILED ❌: ' . $e->getMessage();
     }
     return response()->json([
-        'mikrotik_api'  => $status,
-        'session_mobile'=> $mobile ?? 'NOT SET',
-        'session_mac'   => $mac    ?? 'NOT SET',
-        'link_login'    => $linkLogin ?? 'NOT SET — user must access via MikroTik redirect first',
-        'env_host'      => env('MIKROTIK_HOST'),
+        'mikrotik_api' => $status,
+        'session_mobile' => $mobile ?? 'NOT SET',
+        'session_mac' => $mac ?? 'NOT SET',
+        'link_login' => $linkLogin ?? 'NOT SET — user must access via MikroTik redirect first',
+        'env_host' => env('MIKROTIK_HOST'),
         'env_connected' => env('MIKROTIK_CONNECTED'),
     ]);
 });

@@ -53,8 +53,8 @@
     </div>
 </div>
 
-{{-- MikroTik Handshake Form: MUST use GET for some environments + simpler login --}}
-<form id="mikrotikForm" method="GET" action="{{ $link_login }}" style="display:none">
+{{-- MikroTik Handshake Form: MUST use POST for modern RouterOS versions --}}
+<form id="mikrotikForm" method="POST" action="{{ $link_login }}" style="display:none">
     <input type="hidden" name="username" value="{{ $username }}">
     <input type="hidden" name="password" value="{{ $password }}">
     <input type="hidden" name="dst"      value="{{ $dst ?? url('/success') }}">

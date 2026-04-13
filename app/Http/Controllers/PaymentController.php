@@ -10,6 +10,7 @@ use App\Models\WifiPlan;
 use App\Models\WifiUser;
 use App\Models\WifiSession;
 use App\Services\MikrotikService;
+use App\Services\RadiusService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -44,7 +45,7 @@ class PaymentController extends Controller
         }
 
         // 💳 PAID PLAN: Create Razorpay Order
-        $api = new Api(env('RAZORPAY_KEY'), env('RAZORPAY_SECRET'));
+        $api = new Api(config('services.razorpay.key'), config('services.razorpay.secret'));
 
         $order = $api->order->create([
             'receipt'  => 'rcpt_' . $user->id . '_' . time(),
@@ -74,7 +75,7 @@ class PaymentController extends Controller
     // ✅ Payment Success Callback from Razorpay JS (AJAX POST)
     public function paymentSuccess(Request $request, MikrotikService $mikrotik)
     {
-        $api = new Api(env('RAZORPAY_KEY'), env('RAZORPAY_SECRET'));
+        $api = new Api(config('services.razorpay.key'), config('services.razorpay.secret'));
 
         try {
             $razorpayOrderId   = $request->input('razorpay_order_id');
@@ -185,8 +186,19 @@ class PaymentController extends Controller
             'is_free'          => $isFree,
         ]);
 
-        // 📡 Push limits to MikroTik
+        // 📡 Push limits to RADIUS & MikroTik API
         try {
+            // 🛡️ 1. RADIUS (High Performance Data Control)
+            $radius = new RadiusService();
+            $radius->syncUser(
+                $user->mobile,
+                $user->mobile, // Password is same as mobile
+                ($plan->upload_limit && $plan->download_limit) ? "{$plan->upload_limit}/{$plan->download_limit}" : null,
+                $plan->limit_bytes, // Data Limit in MB
+                $plan->duration_minutes * 60 // Time Limit in Seconds
+            );
+
+            // 🛠️ 2. MikroTik API (Direct Router Sync)
             $mikrotik    = new MikrotikService();
             $profileName = $plan->profile_name ?: 'plan_' . $plan->id;
             $uptimeLimit = $plan->duration_minutes . 'm';
@@ -204,9 +216,9 @@ class PaymentController extends Controller
                 $rateLimit,
                 $mac
             );
-            Log::info('[MikroTik] Plan pushed for ' . $user->mobile . ' Profile:' . $profileName);
+            Log::info('[Sync] Plan pushed to RADIUS & MikroTik for ' . $user->mobile);
         } catch (\Exception $e) {
-            Log::error('[MikroTik] Failed to push plan for ' . $user->mobile . ': ' . $e->getMessage());
+            Log::error('[Sync] Failed for ' . $user->mobile . ': ' . $e->getMessage());
         }
 
         return $this->buildHandshakeResponse($user, $request);

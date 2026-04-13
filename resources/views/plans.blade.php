@@ -5,36 +5,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Select a WiFi Plan</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 
-<body style="background-color: #f4f7f6; margin: 0; padding: 0; font-family: Arial, sans-serif;">
+<body style="background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%); margin: 0; padding: 0; font-family: 'Outfit', sans-serif; min-height: 100vh; color: white;">
+    @include('partials.header')
     <div class="container" style="padding: 40px 20px;">
-        <h1 style="text-align: center; color: #1a1a1a; margin-bottom: 10px;">Select a WiFi Plan</h1>
-        <p style="text-align: center; color: #666; margin-bottom: 40px;">Choose a plan to continue surfing the internet.
-        </p>
+        <h1 style="text-align: center; color: white; margin-bottom: 10px; font-weight: 700;">Select a WiFi Plan</h1>
+        <p style="text-align: center; color: rgba(255,255,255,0.6); margin-bottom: 40px;">Choose a plan to continue surfing the internet.</p>
 
         <div
             style="display: flex; flex-wrap: wrap; justify-content: center; gap: 30px; max-width: 1200px; margin: 0 auto;">
             @foreach($plans as $plan)
                 <div
-                    style="background: white; border-radius: 12px; padding: 30px; width: 280px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); transition: transform 0.3s ease; position:relative;">
+                    style="background: rgba(255,255,255,0.08); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.15); border-radius: 20px; padding: 35px 30px; width: 300px; text-align: center; position:relative; overflow: visible;">
                     
                     @if($plan->is_free)
                         <div style="position:absolute; top:-10px; right:-10px; background:#e74c3c; color:white; padding:5px 15px; border-radius:30px; font-weight:bold; font-size:12px; transform:rotate(10deg); box-shadow:0 5px 15px rgba(231,76,60,0.3);">FREE TRIAL</div>
                     @endif
 
-                    <h2 style="color: #2c3e50; margin-top: 0;">{{ $plan->name }}</h2>
-                    <div style="font-size: 32px; font-weight: bold; color: #27ae60; margin: 20px 0;">₹{{ $plan->price }}
+                    <h2 style="color: white; margin-top: 0; font-weight: 700;">{{ $plan->name }}</h2>
+                    <div style="font-size: 38px; font-weight: 700; color: #00d4aa; margin: 25px 0;">₹{{ $plan->price }}
                     </div>
 
-                    <div style="text-align: left; margin-bottom: 30px; border-top: 1px solid #eee; padding-top: 20px;">
-                        <div style="margin-bottom: 10px; color: #555;">⏱ <b>Duration:</b>
+                    <div style="text-align: left; margin-bottom: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 25px;">
+                        <div style="margin-bottom: 14px; color: rgba(255,255,255,0.8);">⏱ <b>Duration:</b>
                             {{ $plan->duration_minutes }} Minutes
                         </div>
-                        <div style="margin-bottom: 10px; color: #555;">🚀 <b>Speed:</b>
+                        <div style="margin-bottom: 14px; color: rgba(255,255,255,0.8);">🚀 <b>Speed:</b>
                             {{ $plan->upload_limit ?: 'Best' }}/{{ $plan->download_limit ?: 'Available' }}
                         </div>
-                        <div style="margin-bottom: 10px; color: #555;">📊 <b>Data Limit:</b>
+                        <div style="margin-bottom: 14px; color: rgba(255,255,255,0.8);">📊 <b>Data Limit:</b>
                             {{ $plan->limit_bytes ? $plan->limit_bytes.' MB' : 'Unlimited' }} 
                         </div>
                     </div>

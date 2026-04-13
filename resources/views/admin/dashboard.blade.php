@@ -9,7 +9,15 @@
         text-decoration: underline 2px skyblue;
     }
 </style>
-<h1>Wifi Analytics Dashboard</h1>
+<div style="display: flex; justify-content: space-between; align-items: center;">
+    <h1>Wifi Analytics Dashboard</h1>
+    <form action="{{ url('/admin/clear-all-sessions') }}" method="POST" onsubmit="return confirm('WARNING: This will kick EVERYONE off the internet and reset all active sessions. Continue?')">
+        @csrf
+        <button type="submit" style="background-color: #f38ba8; color: #11111b; font-weight: bold; padding: 10px 20px; border-radius: 8px; cursor: pointer;">
+            🔥 Terminate All Sessions
+        </button>
+    </form>
+</div>
 
 
 <div class="card">

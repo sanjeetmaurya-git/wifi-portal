@@ -308,4 +308,42 @@ class MikrotikService
 
         return $this->getClient();
     }
+
+    /**
+     * 🔥 WIPE ALL ACTIVE SESSIONS
+     * Forcefully kicks EVERYONE out of the hotspot.
+     */
+    public function killAllSessions(): bool
+    {
+        if ($this->isDevelopmentMode()) return true;
+
+        try {
+            $client = $this->getClient();
+            $query = new Query('/ip/hotspot/active/print');
+            $active = $client->query($query)->read();
+
+            foreach ($active as $session) {
+                $remove = new Query('/ip/hotspot/active/remove');
+                $remove->equal('.id', $session['.id']);
+                $client->query($remove)->read();
+                Log::info("[MikroTik] Force closed session for: " . ($session['user'] ?? 'unknown'));
+            }
+            
+            // Also clear hosts to be sure
+            $hostQuery = new Query('/ip/hotspot/host/print');
+            $hosts = $client->query($hostQuery)->read();
+            foreach ($hosts as $h) {
+                if (($h['authorized'] ?? 'false') === 'true' || ($h['bypassed'] ?? 'false') === 'true') {
+                    $removeHost = new Query('/ip/hotspot/host/remove');
+                    $removeHost->equal('.id', $h['.id']);
+                    $client->query($removeHost)->read();
+                }
+            }
+
+            return true;
+        } catch (Exception $e) {
+            Log::error("[MikroTik] Error wiping all sessions: " . $e->getMessage());
+            return false;
+        }
+    }
 }

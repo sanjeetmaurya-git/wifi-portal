@@ -19,7 +19,6 @@ return new class extends Migration
             $col->string('state')->nullable();
             $col->string('pincode')->nullable();
             $col->string('id_proof')->nullable(); // Aadhar, PAN, Voter card number, etc.
-            $col->timestamp('last_verified_at')->nullable(); // For 15-day logic
         });
     }
 
