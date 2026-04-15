@@ -89,34 +89,79 @@ Route::get('/check-session', [UserController::class, 'checkSession']);
 
 Route::post('/send-otp', [AuthController::class, 'sendOtp'])->middleware('throttle:3,1'); // 3 Otp request per minute
 
-// Diagnosis
-Route::get('/test-mikrotik', [AuthController::class, 'testMikrotik']);
+// 🔬 Diagnostic: Full session + DB + MikroTik status
+Route::get('/debug', function (Illuminate\Http\Request $request) {
+    $mobile    = $request->query('mobile') ?? session('mobile');
+    $mac       = $request->query('mac')    ?? session('mac');
+    $linkLogin = session('link_login');
+    $activateLL = session('activate_link_login');
+
+    // If still no mobile, try to find user by MAC
+    if (!$mobile && $mac) {
+        $userByMac = \App\Models\WifiUser::where('mac_address', $mac)->first();
+        if ($userByMac) $mobile = $userByMac->mobile;
+    }
+
+    // DB session
+    $user = $mobile ? \App\Models\WifiUser::where('mobile', $mobile)->first() : null;
+    $dbSession = $user
+        ? \App\Models\WifiSession::where('user_id', $user->id)
+            ->where('expires_at', '>', now())
+            ->whereNull('logout_at')
+            ->with('plan')
+            ->latest()
+            ->first()
+        : null;
+
+    // MikroTik connection test
+    try {
+        $mikrotik  = new \App\Services\MikrotikService();
+        $connected = $mikrotik->connect();
+        $mtStatus  = $connected === true ? 'MOCK MODE (MIKROTIK_CONNECTED=false)' : 'CONNECTED ✅';
+        // Try to check if user exists in MikroTik
+        $mtUserExists = $mobile ? ($mikrotik->userExists($mobile) ? 'YES ✅' : 'NO ❌') : 'N/A';
+        // Active sessions from MikroTik
+        $mtActiveSessions = $mikrotik->getActiveUsers();
+        $mtIsOnline = collect($mtActiveSessions)->contains('user', $mobile) ? 'YES ✅' : 'NO ❌';
+    } catch (\Exception $e) {
+        $mtStatus       = 'FAILED ❌: ' . $e->getMessage();
+        $mtUserExists   = 'N/A';
+        $mtIsOnline     = 'N/A';
+        $mtActiveSessions = [];
+    }
+
+    return response()->json([
+        '=== SESSION ===' => '---',
+        'session_mobile'        => $mobile       ?? '❌ NOT SET',
+        'session_mac'           => $mac          ?? '❌ NOT SET',
+        'link_login'            => $linkLogin    ?? '❌ NOT SET (portal not accessed via MikroTik redirect)',
+        'activate_link_login'   => $activateLL   ?? '❌ NOT SET',
+
+        '=== DATABASE ===' => '---',
+        'db_user_found'         => $user         ? "✅ {$user->full_name} ({$user->mobile})" : '❌ NOT FOUND',
+        'db_active_session'     => $dbSession
+            ? "✅ Plan: {$dbSession->plan->name} | Expires: {$dbSession->expires_at}"
+            : '❌ NO ACTIVE SESSION IN DB',
+
+        '=== MIKROTIK ===' => '---',
+        'mikrotik_api'          => $mtStatus,
+        'user_in_mikrotik'      => $mtUserExists,
+        'user_online_now'       => $mtIsOnline,
+        'active_count'          => count($mtActiveSessions),
+
+        '=== CONFIG ===' => '---',
+        'app_url'               => config('app.url'),
+        'mikrotik_host'         => env('MIKROTIK_HOST'),
+        'mikrotik_connected'    => env('MIKROTIK_CONNECTED'),
+        'mikrotik_user'         => env('MIKROTIK_USER'),
+    ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+});
+
+// Legacy
+Route::get('/test-mikrotik', [\App\Http\Controllers\AuthController::class, 'testMikrotik']);
 
 // Connection Success Page
 Route::get('/success', [AuthController::class, 'success'])->name('success');
 
 // ✅ KEY ROUTE: Fresh page that auto-POSTs to MikroTik after Razorpay payment
-// JS in payment.blade.php redirects here — full page load = reliable form auto-submit
 Route::get('/activate-internet', [PaymentController::class, 'activateInternet']);
-
-// 🔬 Diagnostic: test MikroTik connection + show what link_login is in session
-Route::get('/test-api', function () {
-    $linkLogin = session('link_login');
-    $mobile = session('mobile');
-    $mac = session('mac');
-    try {
-        $mikrotik = new \App\Services\MikrotikService();
-        $connected = $mikrotik->connect();
-        $status = $connected === true ? 'MOCK MODE (MIKROTIK_CONNECTED=false)' : 'CONNECTED ✅';
-    } catch (\Exception $e) {
-        $status = 'FAILED ❌: ' . $e->getMessage();
-    }
-    return response()->json([
-        'mikrotik_api' => $status,
-        'session_mobile' => $mobile ?? 'NOT SET',
-        'session_mac' => $mac ?? 'NOT SET',
-        'link_login' => $linkLogin ?? 'NOT SET — user must access via MikroTik redirect first',
-        'env_host' => env('MIKROTIK_HOST'),
-        'env_connected' => env('MIKROTIK_CONNECTED'),
-    ]);
-});

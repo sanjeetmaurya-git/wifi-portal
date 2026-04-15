@@ -48,25 +48,25 @@ class PaymentController extends Controller
         $api = new Api(config('services.razorpay.key'), config('services.razorpay.secret'));
 
         $order = $api->order->create([
-            'receipt'  => 'rcpt_' . $user->id . '_' . time(),
-            'amount'   => (int)($plan->price * 100),
+            'receipt' => 'rcpt_' . $user->id . '_' . time(),
+            'amount' => (int) ($plan->price * 100),
             'currency' => 'INR'
         ]);
 
         Transaction::create([
-            'user_id'      => $user->id,
+            'user_id' => $user->id,
             'wifi_plan_id' => $plan->id,
-            'order_id'     => $order['id'],
-            'amount'       => $plan->price,
-            'status'       => 'created'
+            'order_id' => $order['id'],
+            'amount' => $plan->price,
+            'status' => 'created'
         ]);
 
         // Store everything needed for verification in the session
         session([
-            'order_id'  => $order['id'],
-            'plan_id'   => $plan->id,
-            'amount'    => $plan->price,
-            'user_id'   => $user->id,  // ← store so we can recover if session expires
+            'order_id' => $order['id'],
+            'plan_id' => $plan->id,
+            'amount' => $plan->price,
+            'user_id' => $user->id,  // ← store so we can recover if session expires
         ]);
 
         return redirect('/payment-page');
@@ -78,7 +78,7 @@ class PaymentController extends Controller
         $api = new Api(config('services.razorpay.key'), config('services.razorpay.secret'));
 
         try {
-            $razorpayOrderId   = $request->input('razorpay_order_id');
+            $razorpayOrderId = $request->input('razorpay_order_id');
             $razorpayPaymentId = $request->input('razorpay_payment_id');
             $razorpaySignature = $request->input('razorpay_signature');
 
@@ -88,9 +88,9 @@ class PaymentController extends Controller
 
             // 🔐 Verify payment signature with Razorpay
             $api->utility->verifyPaymentSignature([
-                'razorpay_order_id'   => $razorpayOrderId,
+                'razorpay_order_id' => $razorpayOrderId,
                 'razorpay_payment_id' => $razorpayPaymentId,
-                'razorpay_signature'  => $razorpaySignature
+                'razorpay_signature' => $razorpaySignature
             ]);
 
             // Find the transaction
@@ -113,10 +113,21 @@ class PaymentController extends Controller
                 return response()->json(['error' => 'User or Plan not found.'], 400);
             }
 
+            // 🔄 SESSION RECOVERY: If session was lost, log the user back in!
+            if (!session('mobile')) {
+                session([
+                    'mobile'     => $user->mobile,
+                    'user_id'    => $user->id,
+                    'mac'        => $user->mac_address ?? session('activate_mac'),
+                    'link_login' => session('link_login') ?? "http://" . env('MIKROTIK_HOST', '192.168.88.1') . "/login"
+                ]);
+                Log::info("[SessionRecovery] User {$user->mobile} recovered after payment success.");
+            }
+
             // ✅ Mark transaction as paid
             $transaction->update([
                 'payment_id' => $razorpayPaymentId,
-                'status'     => 'paid',
+                'status' => 'paid',
                 'expires_at' => now()->addMinutes($plan->duration_minutes),
             ]);
 
@@ -134,91 +145,173 @@ class PaymentController extends Controller
 
     /**
      * Central method to activate a plan (free or paid).
-     * Supports plan QUEUING: if user already has an active plan, the new plan
-     * is queued and auto-activated when the current one expires.
+     *
+     * PLAN TYPE RULES:
+     * - daily/unlimited: Queue if same plan type is already active. Never run two daily or two unlimited together.
+     * - datapack: Always activate immediately, stacks on top of the active daily plan by boosting its byte limit.
      */
     private function activatePlan($user, $plan, $request, bool $isFree)
     {
         $mac = session('mac') ?? $user->mac_address ?? 'unknown';
-        $ip  = session('ip')  ?? $user->ip_address  ?? $request->ip();
+        $ip = session('ip') ?? $user->ip_address ?? $request->ip();
 
-        // 📦 PLAN QUEUING: Check if user already has an active plan
+        // ── DATA PACK: activates immediately, standalone or on top of any plan ──
+        if ($plan->isDataPack()) {
+            // Find any currently active session (daily OR unlimited) to link as parent
+            $activeParent = WifiSession::where('user_id', $user->id)
+                ->where('expires_at', '>', now())
+                ->whereNull('logout_at')
+                ->latest()
+                ->first();
+
+            // Create the datapack session (linked to parent if one exists)
+            $expiresAt = $activeParent
+                ? $activeParent->expires_at   // data pack expires when current plan ends
+                : now()->addMinutes($plan->duration_minutes > 0 ? $plan->duration_minutes : 43200);
+
+            WifiSession::create([
+                'user_id' => $user->id,
+                'mac_address' => $mac,
+                'ip_address' => $ip,
+                'login_at' => now(),
+                'duration_minutes' => $plan->duration_minutes,
+                'expires_at' => $expiresAt,
+                'wifi_plan_id' => $plan->id,
+                'is_free' => $isFree,
+                'parent_session_id' => $activeParent?->id,
+                'bonus_data_mb' => $plan->limit_bytes ?? 0,
+            ]);
+
+            // Push to MikroTik: sum up base plan + ALL active data packs
+            try {
+                $mikrotik = new MikrotikService();
+                $profileName = $plan->profile_name ?: 'default';
+                // $packMb      = (int) ($plan->limit_bytes ?? 0);
+
+                // 1. Get Base MB from the main active plan (daily/unlimited)
+                $baseMb = 0;
+                if ($activeParent && $activeParent->plan) {
+                    $baseMb = (int) ($activeParent->plan->daily_data_mb
+                        ?? $activeParent->plan->limit_bytes
+                        ?? 0);
+                }
+
+                // 2. Sum up ALL active data packs for this user
+                $totalBonusMb = (int) \App\Models\WifiSession::where('user_id', $user->id)
+                    ->where('expires_at', '>', now())
+                    ->whereNull('logout_at')
+                    ->whereHas('plan', fn($q) => $q->where('plan_type', 'datapack'))
+                    ->sum('bonus_data_mb');
+
+                $totalMb = $baseMb + $totalBonusMb;
+
+                $bytesLimit = $totalMb > 0 ? $totalMb . 'M' : null;
+                $uptimeLimit = $plan->duration_minutes > 0 ? $plan->duration_minutes . 'm' : null;
+                $rateLimit = ($plan->upload_limit && $plan->download_limit)
+                    ? "{$plan->upload_limit}/{$plan->download_limit}"
+                    : null;
+
+                $mikrotik->addHotspotUser(
+                    $user->mobile,
+                    $user->mobile,
+                    $profileName,
+                    $uptimeLimit,
+                    $bytesLimit,
+                    $rateLimit,
+                    $mac
+                );
+                Log::info("[DataPack] Activated for {$user->mobile} → Total Limit: {$totalMb}MB (Base: {$baseMb}MB + Total Bonus: {$totalBonusMb}MB)");
+            } catch (\Exception $e) {
+                Log::error("[DataPack] MikroTik push failed for {$user->mobile}: " . $e->getMessage());
+            }
+
+
+            session(['mobile' => $user->mobile]);
+            return $this->buildHandshakeResponse($user, $request);
+        }
+
+
+        // ── DAILY / UNLIMITED: Smart Activation vs. Queuing ─────────
         $activeSession = WifiSession::where('user_id', $user->id)
             ->where('expires_at', '>', now())
             ->whereNull('logout_at')
-            ->latest()
-            ->first();
+            ->whereHas('plan', fn($q) => $q->where('plan_type', $plan->plan_type))
+            ->latest()->first();
 
-        if ($activeSession) {
-            // ✅ User has an active plan. QUEUE the new plan.
-            // New plan starts when current one expires.
-            $startAt = $activeSession->expires_at;
-            WifiSession::create([
-                'user_id'          => $user->id,
-                'mac_address'      => $mac,
-                'ip_address'       => $ip,
-                'login_at'         => $startAt,
-                'duration_minutes' => $plan->duration_minutes,
-                'expires_at'       => Carbon::parse($startAt)->addMinutes($plan->duration_minutes),
-                'wifi_plan_id'     => $plan->id,
-                'is_free'          => $isFree,
-            ]);
-            Log::info('[Plan] Queued plan for ' . $user->mobile . '. Starts at: ' . $startAt);
-
-            // No MikroTik push needed yet — current plan still active.
-            // Redirect to success page to show current session status.
-            session(['mobile' => $user->mobile]);
-            if ($request->expectsJson() || $request->isXmlHttpRequest()) {
-                return response()->json(['redirect' => url('/success?queued=1')]);
+        // 🔄 SMART REACTIVATION: 
+        // If current plan is >95% exhausted, we skip the queue and activate the new plan IMMEDIATELY.
+        $isExhausted = false;
+        if ($activeSession && $activeSession->plan) {
+            $limit = $activeSession->plan->isDailyPlan() ? $activeSession->plan->daily_data_mb : $activeSession->plan->limit_bytes;
+            if ($limit > 0 && ($activeSession->used_mb >= ($limit * 0.95))) {
+                $isExhausted = true;
+                // Terminate the old exhausted session
+                $activeSession->update(['logout_at' => now(), 'notes' => 'Terminated early for recharge']);
+                Log::info("[Plan] Terminating exhausted session for {$user->mobile} to activate new plan.");
             }
-            return redirect('/success?queued=1');
         }
 
-        // 🆕 No active plan — activate immediately
+        if ($activeSession && !$isExhausted) {
+            // Queue the new plan to start after the current one expires
+            $startAt = $activeSession->expires_at;
+            WifiSession::create([
+                'user_id'           => $user->id,
+                'mac_address'       => $mac,
+                'ip_address'        => $ip,
+                'login_at'          => $startAt,
+                'duration_minutes'  => $plan->duration_minutes,
+                'expires_at'        => Carbon::parse($startAt)->addMinutes($plan->duration_minutes),
+                'wifi_plan_id'      => $plan->id,
+                'is_free'           => $isFree,
+            ]);
+            Log::info('[Plan] Queued ' . $plan->plan_type . ' plan for ' . $user->mobile . '. Starts at: ' . $startAt);
+
+            session(['mobile' => $user->mobile]);
+            return ($request->expectsJson() || $request->isXmlHttpRequest()) 
+                ? response()->json(['redirect' => url('/success?queued=1')])
+                : redirect('/success?queued=1');
+        }
+
+        // ── Activate immediately ───────────────
         WifiSession::create([
-            'user_id'          => $user->id,
-            'mac_address'      => $mac,
-            'ip_address'       => $ip,
-            'login_at'         => now(),
-            'duration_minutes' => $plan->duration_minutes,
-            'expires_at'       => now()->addMinutes($plan->duration_minutes),
-            'wifi_plan_id'     => $plan->id,
-            'is_free'          => $isFree,
+            'user_id'           => $user->id,
+            'mac_address'       => $mac,
+            'ip_address'        => $ip,
+            'login_at'          => now(),
+            'duration_minutes'  => $plan->duration_minutes,
+            'expires_at'        => now()->addMinutes($plan->duration_minutes),
+            'wifi_plan_id'      => $plan->id,
+            'is_free'           => $isFree,
         ]);
 
-        // 📡 Push limits to RADIUS & MikroTik API
+        // ── Push limits to MikroTik with 5% Buffer ──────────────────────────
         try {
-            // 🛡️ 1. RADIUS (High Performance Data Control)
-            $radius = new RadiusService();
-            $radius->syncUser(
-                $user->mobile,
-                $user->mobile, // Password is same as mobile
-                ($plan->upload_limit && $plan->download_limit) ? "{$plan->upload_limit}/{$plan->download_limit}" : null,
-                $plan->limit_bytes, // Data Limit in MB
-                $plan->duration_minutes * 60 // Time Limit in Seconds
-            );
-
-            // 🛠️ 2. MikroTik API (Direct Router Sync)
             $mikrotik    = new MikrotikService();
             $profileName = $plan->profile_name ?: 'plan_' . $plan->id;
+
+            $mbLimit = 0;
+            if ($plan->isDailyPlan() && $plan->daily_data_mb) {
+                $mbLimit = $plan->daily_data_mb;
+            } elseif ($plan->limit_bytes) {
+                $mbLimit = $plan->limit_bytes;
+            }
+
+            // 🎁 ADD 5% OVERHEAD BUFFER
+            // If user pays for 500MB, we give 525MB on the router to account for network headers.
+            $bytesLimit = $mbLimit > 0 ? ceil($mbLimit * 1.05) . 'M' : null;
+
             $uptimeLimit = $plan->duration_minutes . 'm';
-            $bytesLimit  = $plan->limit_bytes ? ($plan->limit_bytes . 'M') : null;
             $rateLimit   = ($plan->upload_limit && $plan->download_limit)
                 ? "{$plan->upload_limit}/{$plan->download_limit}"
                 : null;
 
             $mikrotik->addHotspotUser(
-                $user->mobile,
-                $user->mobile,
-                $profileName,
-                $uptimeLimit,
-                $bytesLimit,
-                $rateLimit,
-                $mac
+                $user->mobile, $user->mobile,
+                $profileName, $uptimeLimit, $bytesLimit, $rateLimit, $mac
             );
-            Log::info('[Sync] Plan pushed to RADIUS & MikroTik for ' . $user->mobile);
+            Log::info("[MikroTik] Plan pushed for {$user->mobile} (with 5% buffer: $bytesLimit)");
         } catch (\Exception $e) {
-            Log::error('[Sync] Failed for ' . $user->mobile . ': ' . $e->getMessage());
+            Log::error('[MikroTik] Plan push failed for ' . $user->mobile . ': ' . $e->getMessage());
         }
 
         return $this->buildHandshakeResponse($user, $request);
@@ -239,7 +332,7 @@ class PaymentController extends Controller
     private function buildHandshakeResponse($user, $request)
     {
         $rawLinkLogin = session('link_login');
-        $mac          = session('mac') ?? $user->mac_address ?? '';
+        $mac = session('mac') ?? $user->mac_address ?? '';
 
         // Always persist user in session for /success and /activate-internet
         session(['mobile' => $user->mobile]);
@@ -253,7 +346,7 @@ class PaymentController extends Controller
         }
 
         // Replace DNS hostname with actual router IP for universal device compatibility
-        $routerIp  = env('MIKROTIK_HOST', '192.168.88.1');
+        $routerIp = env('MIKROTIK_HOST', '192.168.88.1');
         $linkLogin = str_replace(['wifi.local', 'mywifi.net'], $routerIp, $rawLinkLogin);
 
         if ($request->expectsJson() || $request->isXmlHttpRequest()) {
@@ -262,7 +355,7 @@ class PaymentController extends Controller
             // This triggers a fresh full-page load → IIFE auto-submits form reliably.
             session([
                 'activate_link_login' => $linkLogin,
-                'activate_mac'        => $mac,
+                'activate_mac' => $mac,
             ]);
             return response()->json(['redirect' => url('/activate-internet')]);
         }
@@ -270,45 +363,53 @@ class PaymentController extends Controller
         // Free plan (normal HTML form POST) — return the view directly
         return view('mikrotik-login', [
             'link_login' => $linkLogin,
-            'username'   => $user->mobile,
-            'password'   => $user->mobile,
-            'mac'        => $mac,
-            'dst'        => url('/success'),
+            'username' => $user->mobile,
+            'password' => $user->mobile,
+            'mac' => $mac,
+            'dst' => url('/success'),
         ]);
     }
 
     // ✅ GET /activate-internet — Fresh page that auto-POSTs to MikroTik
-    // Called after Razorpay success redirect from JS.
     public function activateInternet(Request $request)
     {
-        // 🔍 Retrieve data from session (stored during callback)
-        $mobile    = session('mobile');
-        $linkLogin = session('activate_link_login') ?? session('link_login');
-        $mac       = session('activate_mac') ?? session('mac') ?? '';
+        // 🔍 SESSION RECOVERY
+        $mobile = session('mobile');
+        $mac    = session('activate_mac') ?? session('mac') ?? $request->ip();
 
         if (!$mobile) {
-             // Fallback: Check if we have it in a cookie or just redirect to login
-             return redirect('/login')->with('error', 'Session lost. Please try to connect again.');
+            // Try to find user by MAC or IP from database
+            $user = WifiUser::where('mac_address', $mac)
+                ->orWhere('ip_address', $request->ip())
+                ->latest()
+                ->first();
+
+            if ($user && $mobile = $user->mobile) {
+                session(['mobile' => $mobile, 'user_id' => $user->id, 'mac' => $user->mac_address]);
+                Log::info("[HandshakeRecovery] Found disconnected session for $mobile via MAC/IP");
+            } else {
+                return redirect('/login')->with('error', 'Please login to finish connection.');
+            }
+        } else {
+            $user = WifiUser::where('mobile', $mobile)->first();
         }
 
-        $user = WifiUser::where('mobile', $mobile)->first();
-        if (!$user) {
-            return redirect('/login')->with('error', 'User not found.');
-        }
+        if (!$user) return redirect('/login');
 
-        // If we don't have a link_login, we can't do the handshake.
-        // But we can try the IP fallback instead of just failing.
-        if (!$linkLogin) {
-            $routerIp  = env('MIKROTIK_HOST', '192.168.88.1');
-            $linkLogin = "http://{$routerIp}/login";
-        }
+        // 🔗 LINK RECOVERY: Use configured host as fallback
+        $routerHost = env('MIKROTIK_HOST', '192.168.88.1');
+        $hotspotIp  = env('MIKROTIK_HOTSPOT_IP', $routerHost); // Fallback to host if not set
+        
+        $linkLogin = session('activate_link_login') ?? session('link_login') ?? "http://{$hotspotIp}/login";
 
-        // 🧬 Double-check: Replace 'wifi.local' DNS with IP to ensure it works even if DNS isn't ready.
-        // We keep a fallback to the original link if the IP one fails (handled by the User manually).
-        $routerIp     = env('MIKROTIK_HOST', '192.168.88.1');
-        $finalLoginUrl = str_replace(['wifi.local', 'mywifi.net'], $routerIp, $linkLogin);
+        // Double-check DNS replacement with the CORRECT Hotspot IP
+        $finalLoginUrl = str_replace(
+            ['wifi.local', 'mywifi.net', 'portal.wifi', $routerHost], 
+            $hotspotIp, 
+            $linkLogin
+        );
 
-        Log::info("[Handshake] Ready for $mobile at $finalLoginUrl");
+        Log::info("[Handshake] Launching for $mobile at $finalLoginUrl (Router API: $routerHost)");
 
         return view('mikrotik-login', [
             'link_login' => $finalLoginUrl,
@@ -319,7 +420,6 @@ class PaymentController extends Controller
         ]);
     }
 
-    // ✅ Payment Page View
     public function paymentPage()
     {
         return view('payment');

@@ -1,178 +1,217 @@
-# 📘 PLANPORTAL — WiFi Captive Portal Project Blueprint
-**Laravel 12 | MikroTik + TP-Link | PM-WANI PDOA**
+# 📶 WiFi Captive Portal — Full Development Plan
+*Updated: April 2026 | Laravel + MikroTik RouterOS API*
 
 ---
 
-## 🔴 CURRENT CRITICAL BUG
-**Problem:** User enters mobile → verifies OTP → redirected to `/plans` page.
-**In WinBox IP → Hotspot → Active: NO ENTRY SHOWN.**
-**Result: User has NO internet access.**
+## ✅ COMPLETED STEPS (Steps 1–26)
+
+Steps 1–26 are **done** and working. These include:
+- OTP-based login + 15-day MAC auto-login
+- KYC registration (Name, Address, ID Proof, Consent)
+- Razorpay payment integration
+- MikroTik RouterOS API for user creation, session management, profile limits
+- Admin dashboard with analytics, revenue, session management
+- Terminate All Sessions button
+- Plan queuing (second plan activates after first expires)
 
 ---
 
-## 🧠 ROOT CAUSE ANALYSIS (Code Audit)
+## 🔧 CURRENT BUG FIX (Step 27)
 
-### The Authentication Flow — What SHOULD happen:
+### Step 27: Fix "User Can't Browse After Payment"
+**Root Cause**: After payment, the user is on the correct `/activate-internet` page
+but the MikroTik handshake form submits to `wifi.local` which fails on some devices.
+
+**Checklist (do all of these)**:
+- [ ] **A** `APP_URL=http://192.168.88.88:8000` in `.env` ✅ Fixed
+- [ ] **B** `MIKROTIK_CONNECTED=true` in `.env` ✅ Confirmed
+- [ ] **C** In Winbox → **IP → Hotspot → Walled Garden** → Add:
+  - Dst. Host: `192.168.88.88` → Action: `allow`
+- [ ] **D** In Winbox → **IP → Services** → `api` (port 8728) = **Enabled**
+- [ ] **E** In Winbox → **System → Users** → `apiuser`, password = `Typeone@1230`
+- [ ] **F** Windows Firewall → Allow port `8000` for **PHP** (both private + public)
+- [ ] **G** After all changes: Restart server & run `php artisan config:clear`
+
+---
+
+## 🚀 NEW FEATURES — Step 28 to 35
+
+---
+
+### Step 28: Three Plan Types System ✅ (DB + Model + Controller Done)
+
+Three distinct plan categories:
+
+| Type | Name | Behaviour |
+|------|------|-----------|
+| `daily` | Daily Data Plan | X MB per day. Resets at midnight. Valid for N days. |
+| `unlimited` | Unlimited Plan | No data cap. Speed limited. Valid for N days. |
+| `datapack` | Data Pack (Top-Up) | One-time MB boost. Stacks ON an active daily plan. |
+
+**Rules**:
+- Two `daily` plans **cannot** run together → second one queues after first expires.
+- Two `unlimited` plans **cannot** run together → queued same way.
+- A `datapack` **always activates immediately** and adds bonus MB to the current daily plan.
+- A `datapack` can only be purchased if a `daily` plan is active.
+
+**DB Changes** (already migrated):
 ```
-User connects WiFi
-    ↓
-MikroTik intercepts and redirects to:
-    http://your-portal/login?mac=XX:XX:XX&ip=192.168.x.x&link-login=http://192.168.88.1/login
-    ↓
-User enters mobile → OTP → verifyOtp()
-    ↓
-Portal calls MikroTik API → adds user to /ip/hotspot/user/
-    ↓
-Portal sends POST to MikroTik's link-login URL (NOT a GET redirect)
-    ↓
-MikroTik creates Active Session
-    ↓
-User gets internet ✅
+wifi_plans.plan_type         ENUM('daily','unlimited','datapack')
+wifi_plans.daily_data_mb     INT nullable — MB per day for daily plans
+wifi_plans.description       VARCHAR nullable
+wifi_sessions.parent_session_id  FK to wifi_sessions (for datapacks)
+wifi_sessions.bonus_data_mb  INT — extra MB from datapack
+wifi_sessions.used_mb        INT — MB consumed (synced from MikroTik)
 ```
 
-### Why Winbox Active Tab Shows NOTHING — 3 Reasons Found:
+---
 
-**Bug #1 — GET Redirect is WRONG for MikroTik (CRITICAL)**
+### Step 29: Daily Data Reset Cron (Midnight Reset for Daily Plans)
+
+For `daily` plans, MikroTik's `limit-bytes-total` is set to the **daily** allowance (e.g. `1000M` for 1GB/day).
+Each midnight, we must **reset the counter** on MikroTik for all active daily plan users.
+
+**File**: `app/Console/Commands/ResetDailyDataLimits.php`
+
 ```php
-// ❌ CURRENT CODE (BROKEN) — line 311 in AuthController.php
-return redirect($linkLogin . '?username=' . $request->mobile . '&password=' . $request->mobile);
+// Pseudocode
+foreach (ActiveDailySessions as $session) {
+    $mikrotik->resetUserCounters($session->user->mobile);
+    // This resets bytes-used to 0, so the daily allowance refreshes
+}conin 
 ```
-MikroTik Hotspot login REQUIRES a **POST** request to its login URL.
-A simple GET redirect will NOT create an active session in Winbox.
-The router's internal firewall only authenticates users via POST form submission.
 
-**Bug #2 — Password is WRONG (IMPORTANT)**
+**Schedule** (`app/Console/Kernel.php` or `routes/console.php`):
 ```php
-// ❌ WRONG: Using mobile number as password
-addHotspotUser($mobile, $mobile, 'default'); // password = mobile number
-
-// ✅ CORRECT: Router user password must MATCH what you send in the login form
-// Both must be the SAME value. Using mobile as both username AND password is OK
-// BUT you must ensure the user EXISTS in /ip/hotspot/user/ BEFORE login attempt
+Schedule::command('wifi:reset-daily-data')->dailyAt('00:00');
 ```
 
-**Bug #3 — `WifiSession::create()` called but `expires_at` is NULL**
+**Status**: ⬜ TODO
+
+---
+
+### Step 30: Data Limit Notification (Browser/Phone Notification)
+
+When a user exhausts their daily data limit, MikroTik cuts off their access and redirects to the captive portal login page. Instead of showing a generic "Login" page, detect this case and show a **"Data Exhausted"** page.
+
+**How MikroTik signals data limit reached**:
+When the user hits the limit, MikroTik bounces them back to the login URL with the error parameter. Detect this in `AuthController::loginPage()`.
+
+**Implementation**:
 ```php
-// ❌ PaymentController line 96-104 — expires_at is MISSING!
-WifiSession::create([
-    'user_id' => $user->id,
-    'mac_address' => session('mac'),
-    // ... 
-    // ❌ 'expires_at' is not set! Status card shows broken timer.
-]);
+// In loginPage() — detect the MikroTik 'error' param
+$error = $request->input('error');
+if ($error === 'Traffic limit reached') {
+    return view('data-exhausted', [
+        'mobile' => $user->mobile,
+        'plan'   => $activeSession->plan,
+    ]);
+}
 ```
 
----
+**`data-exhausted.blade.php`**: A premium page that:
+- Shows "📵 Your daily data limit is reached!"
+- Shows current plan details (remaining days, plan name)
+- Shows a **"Buy Data Pack →"** button that goes to plans page filtered for datapacks
+- Shows time until midnight reset (countdown timer)
 
-## ✅ THE FIX PLAN (Step by Step)
-
-### FIX 1: Restore `mikrotik-login.blade.php` (MOST CRITICAL)
-The file was deleted by mistake. We MUST use a hidden HTML form
-that auto-submits via POST — NOT a PHP redirect.
-
-**File to recreate:** `resources/views/mikrotik-login.blade.php`
-
-### FIX 2: Restore POST login in `verifyOtp()` in AuthController.php
-Replace the broken GET redirect with the hidden form view.
-
-### FIX 3: Add `expires_at` to `WifiSession::create()` in PaymentController.php
-Without this, the status/timer page breaks and sessions are "never active".
-
-### FIX 4: Ensure `addHotspotUser()` is called BEFORE the POST login form
-The user must exist in `/ip/hotspot/user/` BEFORE MikroTik will accept login.
+**Status**: ⬜ TODO
 
 ---
 
-## 🏗️ COMPLETE SYSTEM ARCHITECTURE
+### Step 31: Usage Dashboard Page (`/usage`)
 
+A data usage tracking page accessible after login showing:
+
+| Section | Details |
+|---------|---------|
+| Active Plan | Plan name, type, validity countdown |
+| Data Used Today | Progress bar: X MB / Y MB used |
+| Total Data Used | All-time usage across all sessions |
+| Queued Plan | Shows next plan (if queued) |
+| Data Pack Add-ons | Any active datapacks |
+
+**Route**: `GET /usage` → `UserController::usagePage()`
+
+**Data source**:
+- `wifi_sessions.used_mb` (synced via cron from MikroTik `/ip/hotspot/active` `bytes-in+bytes-out`)
+- Show daily progress bar for `daily` plans
+
+**Status**: ⬜ TODO
+
+---
+
+### Step 32: Plans Page — Plan Type Filtering
+
+Update the `/plans` page (`resources/views/plans.blade.php`) to:
+- Show plans grouped by type: **Daily Plans | Unlimited | Data Packs**
+- Show a **"Data Pack" section only if user has an active daily plan**
+- Disable datapack buy button if no active daily plan (show tooltip)
+
+**Status**: ⬜ TODO
+
+---
+
+### Step 33: Admin Plan Creator — Support All Plan Types
+
+Update `admin/plans/create.blade.php` to:
+- Add a **Plan Type** dropdown: `Daily | Unlimited | Data Pack`
+- Show **Daily Data (MB/Day)** field only when `Daily` is selected
+- Show **Total Data (MB)** field for `Data Pack`
+- Auto-set `profile_name` based on plan type + ID
+
+**Status**: ⬜ TODO
+
+---
+
+### Step 34: Data Usage Sync Cron
+
+Every 5 minutes, sync the live `bytes-in + bytes-out` from MikroTik for all active sessions.
+
+```php
+// app/Console/Commands/SyncUsageStats.php (already exists)
+// Update used_mb in wifi_sessions from MikroTik /ip/hotspot/active
+$active = $mikrotik->getActiveUsers();
+foreach ($active as $row) {
+    $bytesTotal = ($row['bytes-in'] ?? 0) + ($row['bytes-out'] ?? 0);
+    $mb = round($bytesTotal / 1024 / 1024, 2);
+    WifiSession::where('user_id', ...)->update(['used_mb' => $mb]);
+}
 ```
-[User Device]
-     │  connects to WiFi
-     ▼
-[MikroTik Router]
-     │  intercepts, blocks internet, redirects to:
-     │  http://portal/login?mac=..&ip=..&link-login=http://192.168.88.1/login
-     ▼
-[Laravel Portal — loginPage()]
-     │  checks WifiSession by MAC
-     │  if active session → shows timer/status card
-     │  else → shows login form
-     ▼
-[User — enters mobile, clicks Send OTP]
-     │
-     ▼
-[sendOtp()] → saves OTP to DB with 5min expiry
-     │
-     ▼
-[User — enters OTP]
-     │
-     ▼
-[verifyOtp()]
-     │  1. Validates OTP from DB
-     │  2. Creates/finds WifiUser
-     │  3. Calls MikrotikService::addHotspotUser() — adds to /ip/hotspot/user/
-     │  4. Renders mikrotik-login.blade.php (hidden POST form)
-     │     — form auto-submits to MikroTik's link-login URL
-     │     — MikroTik creates Active session → Winbox shows entry ✅
-     │     — MikroTik redirects user to internet ✅
-     ▼
-[For Paid Plans — PaymentController::paymentSuccess()]
-     │  1. Verifies Razorpay signature
-     │  2. Creates WifiSession with correct expires_at
-     │  3. Calls MikrotikService::addHotspotUser()
-     │  4. Renders mikrotik-login.blade.php with session('link_login')
-     ▼
-[User has internet ✅]
-```
+
+**Schedule**: Every 5 minutes
+**Status**: ⬜ TODO (command exists, needs enhancement)
 
 ---
 
-## 📁 KEY FILES
+### Step 35: "Data Limit Reached" MikroTik Walled Garden Config
 
-| File | Role | Status |
-|:-----|:-----|:-------|
-| `AuthController.php` | OTP login + auto-login | ⚠️ Needs fix |
-| `PaymentController.php` | Razorpay + session creation | ⚠️ Missing expires_at |
-| `MikrotikService.php` | Router API wrapper | ✅ OK |
-| `mikrotik-login.blade.php` | Hidden POST form for router | ❌ DELETED — Recreate |
-| `resources/views/status.blade.php` | Timer card | ✅ OK |
+In Winbox, ensure MikroTik redirects the user back to the portal when data is exhausted:
 
----
+1. **IP → Hotspot → Server Profiles → [your profile]**
+   - Login By: HTTP PAP
+   - On-Login: (empty)
+   - Login Page: `http://192.168.88.2:8000/login`
 
-## 📅 DEVELOPMENT PHASES
+2. **IP → Hotspot → Walled Garden**
+   - Add entry: Dst. Host = `192.168.88.2` → Allow (so portal is reachable without internet)
 
-### Phase 1 — CURRENT: Fix Internet Access Bug
-- [ ] Recreate `mikrotik-login.blade.php`
-- [ ] Fix POST redirect in `verifyOtp()`
-- [ ] Fix `expires_at` in `WifiSession::create()` in PaymentController
-- [ ] Store `link_login` in session during OTP verify
-- [ ] Test: Winbox Active tab must show entry after OTP
-
-### Phase 2 — Plans & Payment Flow
-- [ ] After plan purchase, trigger MikroTik POST login
-- [ ] Timer card shows correct remaining time
-- [ ] Disconnect WiFi button works
-
-### Phase 3 — Multi-Router Support
-- [ ] Create `RouterInterface` contract
-- [ ] Wrap `MikrotikService` behind it
-- [ ] Add `TPLinkService` using Omada Controller API
-
-### Phase 4 — PM-WANI Integration
-- [ ] C-DOT Central Registry API sync
-- [ ] 1-year session log retention
-- [ ] PDO dashboard for shop owners
+3. **IP → Hotspot → User Profiles**
+   - Set `limit-bytes-total` for each plan profile
+   - When limit is hit, MikroTik disconnects and redirects to login page
 
 ---
 
-## ⚙️ ENVIRONMENT VARIABLES (.env)
-```env
-MIKROTIK_CONNECTED=true          # Set to true when real router is connected
-MIKROTIK_HOST=192.168.88.1       # Router LAN IP
-MIKROTIK_USER=apiuser
-MIKROTIK_PASS=yourpassword
-MIKROTIK_PORT=8728
+## 📋 IMMEDIATE ACTION CHECKLIST
 
-RAZORPAY_KEY=rzp_test_xxx
-RAZORPAY_SECRET=xxx
-```
+| Priority | Task | Status |
+|----------|------|--------|
+| 🔴 Critical | Add `192.168.88.88` to Walled Garden in Winbox | ⬜ |
+| 🔴 Critical | Enable API service in Winbox (IP → Services → api) | ⬜ |
+| 🔴 Critical | Verify `apiuser` password = `Typeone@1230` in Winbox | ⬜ |
+| 🔴 Critical | Allow port 8000 in Windows Firewall | ⬜ |
+| 🟡 High | Create admin plan creator form for plan_type | Step 33 |
+| 🟡 High | Build `/usage` dashboard page | Step 31 |
+| 🟡 High | Build `data-exhausted.blade.php` | Step 30 |
+| 🟢 Medium | Daily data reset cron at midnight | Step 29 |
+| 🟢 Medium | 5-min usage sync cron | Step 34 |

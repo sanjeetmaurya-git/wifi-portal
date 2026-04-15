@@ -59,14 +59,24 @@ class PlanController extends Controller
         $user = \App\Models\WifiUser::where('mobile', $mobile)->first();
         
         $claimedFreePlans = [];
+        $hasActiveDaily   = false;
+
         if ($user) {
             $claimedFreePlans = \App\Models\WifiSession::where('user_id', $user->id)
                 ->where('is_free', true)
                 ->pluck('wifi_plan_id')
                 ->toArray();
+
+            // Check if user has an active daily plan (to unlock Data Packs)
+            $hasActiveDaily = \App\Models\WifiSession::where('user_id', $user->id)
+                ->where('expires_at', '>', now())
+                ->whereNull('logout_at')
+                ->whereHas('plan', fn ($q) => $q->where('plan_type', 'daily'))
+                ->exists();
         }
 
-        $plans = WifiPlan::where('is_active', true)->get();
-        return view('plans', compact('plans', 'claimedFreePlans'));
+        $plans = WifiPlan::where('is_active', true)->orderBy('plan_type')->orderBy('price')->get();
+        return view('plans', compact('plans', 'claimedFreePlans', 'hasActiveDaily'));
     }
+
 }

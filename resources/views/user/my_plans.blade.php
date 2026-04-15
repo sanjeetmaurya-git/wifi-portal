@@ -1,4 +1,5 @@
-@extends('user.layout')
+@include('partials.header')
+ @extends('user.layout')
 
 @section('content')
 

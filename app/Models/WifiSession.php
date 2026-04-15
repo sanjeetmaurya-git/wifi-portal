@@ -21,12 +21,36 @@ class WifiSession extends Model
         'expires_at',
         'wifi_plan_id',
         'is_free',
+        'parent_session_id',
+        'bonus_data_mb',
+        'used_mb',
     ];
 
-    //users info session 
-    
+    protected $casts = [
+        'login_at'   => 'datetime',
+        'logout_at'  => 'datetime',
+        'expires_at' => 'datetime',
+        'is_free'    => 'boolean',
+    ];
+
     public function user()
     {
-        return $this->belongsTo(WifiUser::class,'user_id');
+        return $this->belongsTo(WifiUser::class, 'user_id');
+    }
+
+    public function plan()
+    {
+        return $this->belongsTo(WifiPlan::class, 'wifi_plan_id');
+    }
+
+    public function parentSession()
+    {
+        return $this->belongsTo(WifiSession::class, 'parent_session_id');
+    }
+
+    /** Is this session still valid and not logged out? */
+    public function isActive(): bool
+    {
+        return $this->expires_at > now() && is_null($this->logout_at);
     }
 }

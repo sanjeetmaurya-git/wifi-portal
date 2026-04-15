@@ -65,8 +65,7 @@ class MikrotikService
                     // 'transparent-proxy' => 'yes'
                     'status-autorefresh' => '1m'
                 ];
-                if ($bytesLimit)
-                    $profParams['limit-bytes-total'] = $bytesLimit;
+                // ❌ limit-bytes-total is NOT valid on profiles — only on users (line 110 below handles this)
                 if ($uptimeLimit)
                     $profParams['session-timeout'] = $uptimeLimit;
                 if ($rateLimit)
@@ -307,6 +306,42 @@ class MikrotikService
         }
 
         return $this->getClient();
+    }
+
+    /**
+     * 🔄 RESET byte counters for a single user (used by midnight daily-data reset cron)
+     */
+    public function resetUserCounters(string $mobile): bool
+    {
+        if ($this->isDevelopmentMode()) {
+            Log::info("[MikroTik MOCK] Reset counters for $mobile");
+            return true;
+        }
+
+        try {
+            $client = $this->getClient();
+
+            // Find user ID
+            $q = new Query('/ip/hotspot/user/print');
+            $q->where('name', $mobile);
+            $users = $client->query($q)->read();
+
+            if (empty($users)) {
+                Log::warning("[MikroTik] resetUserCounters: user not found → $mobile");
+                return false;
+            }
+
+            $userId = $users[0]['.id'];
+            $reset  = new Query('/ip/hotspot/user/reset-counters');
+            $reset->equal('.id', $userId);
+            $client->query($reset)->read();
+
+            Log::info("[MikroTik] Counters reset for $mobile");
+            return true;
+        } catch (Exception $e) {
+            Log::error("[MikroTik ERROR] resetUserCounters failed for $mobile → " . $e->getMessage());
+            return false;
+        }
     }
 
     /**

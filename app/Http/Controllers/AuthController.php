@@ -27,6 +27,35 @@ class AuthController extends Controller
         $linkLogin = $request->input('link_login') ?? $request->input('link-login');
         $ip = $request->input('ip') ?: $request->input('ip-address') ?: $request->ip();
 
+        // ─────────────────────────────────────────────────────────────
+        // 🚫 Step 30: DATA-EXHAUSTED DETECTION
+        // MikroTik sends error=Traffic+limit+reached when a user hits
+        // their daily / total byte limit and gets bounced back to portal.
+        // ─────────────────────────────────────────────────────────────
+        $mtError = $request->input('error');
+        if ($mtError && str_contains(strtolower($mtError), 'traffic limit')) {
+            $mobile = $request->input('username') ?: session('mobile');
+            $user   = $mobile ? WifiUser::where('mobile', $mobile)->first() : null;
+
+            $activeSession = $user
+                ? WifiSession::where('user_id', $user->id)
+                    ->where('expires_at', '>', now())
+                    ->whereNull('logout_at')
+                    ->with('plan')
+                    ->latest()
+                    ->first()
+                : null;
+
+            $plan            = $activeSession?->plan;
+            $hasActiveDailyPlan = $plan && $plan->plan_type === 'daily';
+
+            $expiresIn = $activeSession
+                ? \Carbon\Carbon::parse($activeSession->expires_at)->diffForHumans(['parts' => 1, 'short' => true])
+                : null;
+
+            return view('data-exhausted', compact('plan', 'hasActiveDailyPlan', 'expiresIn'));
+        }
+
         // 💾 Always persist the router's link_login
         if ($linkLogin) {
             session(['link_login' => $linkLogin]);
@@ -88,16 +117,22 @@ class AuthController extends Controller
     private function buildHotspotLoginForm($user, $linkLogin)
     {
         // Replace hotspot DNS name with actual router IP for universal device compatibility
-        $routerIp = env('MIKROTIK_HOST', '192.168.88.1');
-        $loginUrl = str_replace('wifi.local', $routerIp, $linkLogin ?? "http://{$routerIp}/login");
+        $routerHost = env('MIKROTIK_HOST', '192.168.88.1');
+        $hotspotIp  = env('MIKROTIK_HOTSPOT_IP', $routerHost);
+        
+        $loginUrl = str_replace(
+            ['wifi.local', 'portal.wifi', 'mywifi.net', $routerHost], 
+            $hotspotIp, 
+            $linkLogin ?? "http://{$hotspotIp}/login"
+        );
         $mac = session('mac') ?? $user->mac_address ?? '';
 
         return view('mikrotik-login', [
             'link_login' => $loginUrl,
-            'username' => $user->mobile,
-            'password' => $user->mobile,
-            'mac' => $mac,
-            'dst' => url('/success'),
+            'username'   => $user->mobile,
+            'password'   => $user->mobile,
+            'mac'        => $mac,
+            'dst'        => url('/success'),
         ]);
     }
 
@@ -226,7 +261,10 @@ class AuthController extends Controller
             'ip' => $ip,
         ]);
 
-        // Check if they have an active plan
+        // Check if they have an active plan. 
+        // 🔄 ROUTER RESET RECOVERY:
+        // If they have a plan, we RE-PUSH the limits to MikroTik now.
+        // This handles cases where the router rebooted and lost its memory.
         $activeSession = WifiSession::where('user_id', $user->id)
             ->where('expires_at', '>', now())
             ->whereNull('logout_at')
@@ -234,11 +272,25 @@ class AuthController extends Controller
             ->first();
 
         if ($activeSession) {
-            Log::info("[Auth] Returning user $user->mobile authorized on MikroTik");
+            try {
+                $plan     = $activeSession->plan;
+                $mikrotik = new \App\Services\MikrotikService();
+                $profile  = $plan->profile_name ?: 'plan_' . $plan->id;
+                
+                $mbLimit = $plan->isDailyPlan() ? $plan->daily_data_mb : $plan->limit_bytes;
+                $bytesLimit = $mbLimit > 0 ? ceil($mbLimit * 1.05) . 'M' : null;
+                $uptimeLimit = $plan->duration_minutes . 'm';
+                $rateLimit = ($plan->upload_limit && $plan->download_limit) ? "{$plan->upload_limit}/{$plan->download_limit}" : null;
+
+                $mikrotik->addHotspotUser($user->mobile, $user->mobile, $profile, $uptimeLimit, $bytesLimit, $rateLimit, $mac);
+                Log::info("[AuthRecovery] Re-pushed plan for $user->mobile after reboot login.");
+            } catch (\Exception $e) {
+                Log::warning("[AuthRecovery] Re-push failed: " . $e->getMessage());
+            }
+
             return $this->buildHotspotLoginForm($user, session('temp_link_login') ?: session('link_login'));
         }
 
-        // No active plan? Send to selection page
         return redirect('/plans');
     }
 

@@ -10,9 +10,14 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+// ✅ Expire + disconnect sessions every minute
 Schedule::command('wifi:expire-sessions')->everyMinute();
 
-
-
-// ✅ NEW — daily cleanup of old logs
+// ✅ Daily cleanup of old logs
 Schedule::command('cleanup:data')->daily();
+
+// ✅ Step 29 — Reset MikroTik byte counters for daily-plan users at midnight
+Schedule::command('wifi:reset-daily-data')->dailyAt('00:00');
+
+// ✅ Step 34 — Sync live usage stats from MikroTik every 5 minutes
+Schedule::command('wifi:sync-usage')->everyFiveMinutes();
