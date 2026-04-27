@@ -2,109 +2,105 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use App\Models\RadCheck;
+use App\Models\RadReply;
+use App\Models\RadAcct;
+use App\Services\MikrotikService;
 use Illuminate\Support\Facades\Log;
 
 class RadiusService
 {
     /**
-     * Sync user credentials and limits to FreeRADIUS tables.
-     * 
-     * @param string $username Usually the Mobile Number
-     * @param string $password Usually the Mobile Number
-     * @param string|null $speedLimit e.g., "1M/5M"
-     * @param int|null $dataLimitMB e.g., 1024 for 1GB
-     * @param int|null $sessionTimeout Seconds
+     * Sync a user to FreeRADIUS tables (Mobile based)
      */
-    public function syncUser($username, $password, $speedLimit = null, $dataLimitMB = null, $sessionTimeout = null)
+    public function syncUser($username, $password, $plan)
     {
+        $this->removeUser($username); // Clear old
+
         try {
-            // 1. Authentication (radcheck)
-            DB::table('radcheck')->updateOrInsert(
-                ['username' => $username, 'attribute' => 'Cleartext-Password'],
-                ['op' => ':=', 'value' => $password]
-            );
+            // Add Authentication
+            RadCheck::create(['username' => $username, 'attribute' => 'Cleartext-Password', 'op' => ':=', 'value' => $password]);
 
-            // 2. Speed Limit (radreply)
-            if ($speedLimit) {
-                DB::table('radreply')->updateOrInsert(
-                    ['username' => $username, 'attribute' => 'Mikrotik-Rate-Limit'],
-                    ['op' => '=', 'value' => $speedLimit]
-                );
-            }
+            $this->addLimits($username, $plan);
 
-            // 3. Data Limit (radreply) - Custom attribute for SQL counters
-            if (!is_null($dataLimitMB)) {
-                DB::table('radreply')->updateOrInsert(
-                    ['username' => $username, 'attribute' => 'Max-All-MB'],
-                    ['op' => ':=', 'value' => $dataLimitMB]
-                );
-            }
-
-            // 4. Time Limit (radreply)
-            if ($sessionTimeout) {
-                DB::table('radreply')->updateOrInsert(
-                    ['username' => $username, 'attribute' => 'Session-Timeout'],
-                    ['op' => ':=', 'value' => $sessionTimeout]
-                );
-            }
-
-            Log::info("[RADIUS] Synced user $username with limits.");
+            Log::info("[Radius] User $username synced.");
             return true;
         } catch (\Exception $e) {
-            Log::error("[RADIUS] Sync failed for $username: " . $e->getMessage());
+            Log::error("[Radius] Sync failed: " . $e->getMessage());
             return false;
         }
     }
 
     /**
-     * Summary of data usage for a user.
+     * Sync MAC Address to RADIUS (For automatic login)
      */
-    public function getUsage($username)
+    public function syncMac($mac, $plan)
     {
-        try {
-            $daily = $this->calculateUsage($username, Carbon::today());
-            $monthly = $this->calculateUsage($username, Carbon::now()->startOfMonth());
-            $total = $this->calculateUsage($username);
+        if (empty($mac))
+            return false;
 
-            return [
-                'daily' => $daily,
-                'monthly' => $monthly,
-                'total' => $total,
-            ];
+        $this->removeUser($mac); // Clear old
+
+        try {
+            // MAC based login: Username = MAC, Password = 'password' (matches Winbox)
+            RadCheck::create(['username' => $mac, 'attribute' => 'Cleartext-Password', 'op' => ':=', 'value' => 'password']);
+
+            $this->addLimits($mac, $plan);
+
+            Log::info("[Radius] MAC $mac synced.");
+
+            // ⚡ THE "AUTO-KICK" MAGIC (SaaS Compatible)
+            // We enqueue the command so the router can pull it even without port forwarding
+            try {
+                $mk = new MikrotikService();
+                
+                // Commands to clear everything for this MAC
+                $mk->enqueueCommand("/ip hotspot active remove [find mac-address=\"$mac\"]");
+                $mk->enqueueCommand("/ip hotspot host remove [find mac-address=\"$mac\"]");
+                $mk->enqueueCommand("/ip hotspot cookie remove [find mac-address=\"$mac\"]");
+                
+                Log::info("[Radius] Host $mac removal enqueued for instant re-auth.");
+            } catch (\Exception $e) {
+                Log::warning("[Radius] Auto-kick enqueue failed: " . $e->getMessage());
+            }
+
+            return true;
         } catch (\Exception $e) {
-            Log::error("[RADIUS] Usage calc failed for $username: " . $e->getMessage());
-            return null;
+            Log::error("[Radius] MAC sync failed: " . $e->getMessage());
+            return false;
         }
     }
 
-    private function calculateUsage($username, $since = null)
+    private function addLimits($username, $plan)
     {
-        $query = DB::table('radacct')->where('username', $username);
-        
-        if ($since) {
-            $query->where('acctstarttime', '>=', $since);
+        $up = $plan->upload_limit ?: '2M';
+        $down = $plan->download_limit ?: '5M';
+
+        RadReply::create(['username' => $username, 'attribute' => 'Mikrotik-Rate-Limit', 'op' => ':=', 'value' => "{$up}/{$down}"]);
+
+        if ($plan->duration_minutes > 0) {
+            RadReply::create(['username' => $username, 'attribute' => 'Session-Timeout', 'op' => ':=', 'value' => $plan->duration_minutes * 60]);
         }
-
-        $input = $query->sum('acctinputoctets') ?? 0;
-        $output = $query->sum('acctoutputoctets') ?? 0;
-        $totalBytes = $input + $output;
-
-        return [
-            'bytes' => $totalBytes,
-            'mb' => round($totalBytes / (1024 * 1024), 2),
-            'gb' => round($totalBytes / (1024 * 1024 * 1024), 2),
-        ];
     }
 
     /**
-     * Remove user from RADIUS
+     * Get total data usage for a username (Mobile or MAC)
+     */
+    public function getUsage($username)
+    {
+        $input  = RadAcct::where('username', $username)->sum('acctinputoctets');
+        $output = RadAcct::where('username', $username)->sum('acctoutputoctets');
+        
+        return round(($input + $output) / (1024 * 1024), 2); // Convert to MB
+    }
+
+    /**
+     * Remove user from RADIUS (e.g. on logout or manual disconnect)
      */
     public function removeUser($username)
     {
-        DB::table('radcheck')->where('username', $username)->delete();
-        DB::table('radreply')->where('username', $username)->delete();
-        Log::info("[RADIUS] Removed user $username.");
+        RadCheck::where('username', $username)->delete();
+        RadReply::where('username', $username)->delete();
+        Log::info("[RadiusService] User $username removed from RADIUS.");
     }
 }

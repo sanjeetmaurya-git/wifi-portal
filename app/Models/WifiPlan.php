@@ -46,13 +46,13 @@ class WifiPlan extends Model
         return $this->plan_type === 'datapack';
     }
 
-    /** Human-readable validity (e.g. "30 days", "1 day") */
     public function getValidityLabelAttribute(): string
     {
         $days = intdiv($this->duration_minutes, 1440);
         if ($days >= 1) return $days . ' Day' . ($days > 1 ? 's' : '');
         $hours = intdiv($this->duration_minutes, 60);
-        return $hours . ' Hour' . ($hours > 1 ? 's' : '');
+        if ($hours >= 1) return $hours . ' Hour' . ($hours > 1 ? 's' : '');
+        return $this->duration_minutes . ' Min' . ($this->duration_minutes > 1 ? 's' : '');
     }
 
     /** Human-readable data limit label */

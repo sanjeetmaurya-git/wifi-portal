@@ -76,7 +76,7 @@
         border-bottom: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         font-family: 'Outfit', sans-serif;
     }
-    .header-container { max-width: 1200px; margin: 0 auto; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header-container { max-width: 1400px; margin: 0 auto; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; }
     .status-dot { width: 10px; height: 10px; background: #00d4aa; border-radius: 50%; box-shadow: 0 0 10px #00d4aa; animation: glow 2s infinite; }
     @keyframes glow { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
     .brand-name { font-size: 1.1rem; font-weight: 700; color: #fff; margin: 0; letter-spacing: -0.5px; }

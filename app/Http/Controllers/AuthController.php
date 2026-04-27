@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use App\Models\WifiUser;
 use App\Models\WifiSession;
 use App\Services\MikrotikService;
+use App\Services\RadiusService;
 use App\Models\WifiPlan;
 use Illuminate\Support\Facades\Log;
 
@@ -35,7 +36,7 @@ class AuthController extends Controller
         $mtError = $request->input('error');
         if ($mtError && str_contains(strtolower($mtError), 'traffic limit')) {
             $mobile = $request->input('username') ?: session('mobile');
-            $user   = $mobile ? WifiUser::where('mobile', $mobile)->first() : null;
+            $user = $mobile ? WifiUser::where('mobile', $mobile)->first() : null;
 
             $activeSession = $user
                 ? WifiSession::where('user_id', $user->id)
@@ -46,7 +47,7 @@ class AuthController extends Controller
                     ->first()
                 : null;
 
-            $plan            = $activeSession?->plan;
+            $plan = $activeSession?->plan;
             $hasActiveDailyPlan = $plan && $plan->plan_type === 'daily';
 
             $expiresIn = $activeSession
@@ -116,23 +117,51 @@ class AuthController extends Controller
      */
     private function buildHotspotLoginForm($user, $linkLogin)
     {
-        // Replace hotspot DNS name with actual router IP for universal device compatibility
-        $routerHost = env('MIKROTIK_HOST', '192.168.88.1');
-        $hotspotIp  = env('MIKROTIK_HOTSPOT_IP', $routerHost);
-        
-        $loginUrl = str_replace(
-            ['wifi.local', 'portal.wifi', 'mywifi.net', $routerHost], 
-            $hotspotIp, 
-            $linkLogin ?? "http://{$hotspotIp}/login"
-        );
         $mac = session('mac') ?? $user->mac_address ?? '';
+        $mobile = $user->mobile;
 
+        session(['mobile' => $mobile]);
+
+        // ── Fetch the user's active plan ──────────────────────────────────────
+        $activeSession = WifiSession::where('user_id', $user->id)
+            ->where('expires_at', '>', now())
+            ->whereNull('logout_at')
+            ->with('plan')
+            ->latest()
+            ->first();
+
+        // ── Queue activation commands on the router ───────────────────────────
+        // The MikroTik scheduler (every 5s) executes these. No browser needed.
+        if ($activeSession && $activeSession->plan) {
+            $plan = $activeSession->plan;
+            $mbLimit = method_exists($plan, 'isDailyPlan') && $plan->isDailyPlan()
+                ? $plan->daily_data_mb : $plan->limit_bytes;
+            $bytesLimit = $mbLimit > 0 ? ceil($mbLimit * 1.05) . 'M' : null;
+            $uptimeLimit = $plan->duration_minutes . 'm';
+            $rateLimit = ($plan->upload_limit && $plan->download_limit)
+                ? "{$plan->upload_limit}/{$plan->download_limit}" : null;
+
+            // Handled via RADIUS
+        }
+
+        // ⚡ RADIUS SYNC: ensure FreeRADIUS knows about this returning user (Mobile & MAC)
+        if ($activeSession && $activeSession->plan) {
+            $radius = new \App\Services\RadiusService();
+            $radius->syncUser($mobile, $mobile, $activeSession->plan);
+            $radius->syncMac($mac, $activeSession->plan);
+        }
+
+        Log::info("[AutoLogin] RADIUS synced for $mobile, MAC: $mac");
+
+        // ── Show 8-second connecting screen, then redirect to /success ────────
+        // The screen just shows a progress bar — no GET/POST to the router!
+        // By the time 8s passes, the scheduler has already given internet access.
         return view('mikrotik-login', [
-            'link_login' => $loginUrl,
-            'username'   => $user->mobile,
-            'password'   => $user->mobile,
-            'mac'        => $mac,
-            'dst'        => url('/success'),
+            'link_login' => $linkLogin ?? '',  // kept for template but not used for redirect
+            'username' => $mobile,
+            'password' => $mobile,
+            'mac' => $mac,
+            'dst' => url('/success'),
         ]);
     }
 
@@ -273,10 +302,10 @@ class AuthController extends Controller
 
         if ($activeSession) {
             try {
-                $plan     = $activeSession->plan;
+                $plan = $activeSession->plan;
                 $mikrotik = new \App\Services\MikrotikService();
-                $profile  = $plan->profile_name ?: 'plan_' . $plan->id;
-                
+                $profile = $plan->profile_name ?: 'plan_' . $plan->id;
+
                 $mbLimit = $plan->isDailyPlan() ? $plan->daily_data_mb : $plan->limit_bytes;
                 $bytesLimit = $mbLimit > 0 ? ceil($mbLimit * 1.05) . 'M' : null;
                 $uptimeLimit = $plan->duration_minutes . 'm';
@@ -330,6 +359,26 @@ class AuthController extends Controller
             ->first();
 
         return view('success', compact('user', 'session'));
+    }
+
+    /**
+     * Handle user logout/disconnect
+     */
+    public function logout(Request $request)
+    {
+        $userId = session('user_id');
+
+        if ($userId) {
+            // Mark the active session as logged out
+            WifiSession::where('user_id', $userId)
+                ->whereNull('logout_at')
+                ->update(['logout_at' => now()]);
+        }
+
+        // Clear all session data
+        $request->session()->flush();
+
+        return redirect('/login')->with('success', 'You have been disconnected.');
     }
 
     // Step 19 redirect to Router (The Final Authorize)

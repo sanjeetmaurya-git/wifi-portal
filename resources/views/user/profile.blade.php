@@ -35,10 +35,39 @@
     @include('partials.header')
 
     <div class="container">
-        <div class="card">
-            <h2 style="margin-top:0;">My Profile</h2>
-            <p style="color:rgba(255,255,255,0.6); margin-bottom:25px;">Your registered details and devices.</p>
+        <!-- 📡 Usage Dashboard -->
+        <div class="card" style="margin-bottom: 25px; background: linear-gradient(135deg, rgba(0,212,170,0.1), rgba(0,114,255,0.1));">
+            <h3 style="margin-top:0; color: #00d4aa;">Current Usage</h3>
+            
+            @if($session)
+                <div style="margin: 20px 0;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span>Data Consumed</span>
+                        <span style="font-weight:700; color: #00d4aa;">{{ $usage }} MB</span>
+                    </div>
+                    <div style="height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden;">
+                        <div style="width: {{ min(($usage / 1024) * 100, 100) }}%; height: 100%; background: linear-gradient(90deg, #00d4aa, #0072ff);"></div>
+                    </div>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Active Plan</span>
+                    <span class="info-value" style="color: #00d4aa;">{{ $session->plan->name }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Expires In</span>
+                    <span class="info-value">{{ \Carbon\Carbon::parse($session->expires_at)->diffForHumans(null, true) }}</span>
+                </div>
+            @else
+                <div style="text-align: center; padding: 20px 0;">
+                    <p style="color: rgba(255,255,255,0.5);">No active data plan found.</p>
+                    <a href="/plans" class="btn-add" style="text-decoration:none; display:inline-block; width: auto; padding: 10px 30px;">Buy a Plan</a>
+                </div>
+            @endif
+        </div>
 
+        <div class="card">
+            <h3 style="margin-top:0;">My Account</h3>
             <div class="info-row">
                 <span class="info-label">Full Name</span>
                 <span class="info-value">{{ $user->full_name }}</span>
@@ -48,8 +77,8 @@
                 <span class="info-value">{{ $user->mobile }}</span>
             </div>
             <div class="info-row">
-                <span class="info-label">Address</span>
-                <span class="info-value">{{ $user->address }}, {{ $user->city }}</span>
+                <span class="info-label">MAC Address</span>
+                <span class="info-value" style="font-family: monospace; font-size: 13px;">{{ $user->mac_address ?? 'Not detected' }}</span>
             </div>
 
             <hr style="border:0; border-top: 1px solid rgba(255,255,255,0.1); margin: 30px 0;">

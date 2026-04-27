@@ -37,7 +37,23 @@ class UserController extends Controller
         if (!$mobile) return redirect('/login');
 
         $user = \App\Models\WifiUser::where('mobile', $mobile)->first();
-        return view('user.profile', compact('user'));
+        
+        // 📡 Fetch Data Usage & Session Status
+        $radius = new \App\Services\RadiusService();
+        $usage  = $radius->getUsage($mobile); 
+        // Note: Also check usage by MAC if available
+        if ($user->mac_address) {
+            $usage += $radius->getUsage($user->mac_address);
+        }
+
+        $session = \App\Models\WifiSession::where('user_id', $user->id)
+            ->where('expires_at', '>', now())
+            ->whereNull('logout_at')
+            ->with('plan')
+            ->latest()
+            ->first();
+
+        return view('user.profile', compact('user', 'usage', 'session'));
     }
 
     // Add another number (triggers OTP for the new number)

@@ -141,6 +141,13 @@
         <span id="netText">Testing internet access...</span>
     </div>
 
+    {{-- 🔍 DIAGNOSTICS --}}
+    <div id="debugInfo" style="display:none; background:rgba(255,255,255,0.04); border-radius:12px; padding:12px; margin-bottom:1.5rem; font-size:0.75rem; color:var(--muted); line-height:1.5; border:1px solid rgba(255,255,255,0.08);">
+        <div style="color:var(--amber); font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">Diagnostic Info:</div>
+        <div>Detected MAC: <strong style="color:var(--text); font-family:monospace;">{{ session('mac') ?? 'Unknown' }}</strong></div>
+        <div style="margin-top:8px; font-style:italic;">Check if this MAC matches in Winbox (IP > Hotspot > Hosts).</div>
+    </div>
+
     {{-- Plan stats --}}
     @if($session)
     @php $plan = $session->plan; @endphp
@@ -176,6 +183,16 @@
     <a href="/plans" class="btn btn-plans">📦 Buy a Plan</a>
     @endif
 
+    {{-- Fallback Login (Hidden, shown after 10 retries) --}}
+    <div id="fallbackLogin" style="display:none; margin-bottom:1.5rem;">
+        <button onclick="universalLogin()" class="btn" style="background:var(--indigo); color:white;">
+            🚀 Universal Login — Tap to Force
+        </button>
+        <p style="font-size:0.75rem; color:var(--muted); text-align:center; margin-top:8px;">
+            If the auto-connection is slow, tap this to nudge your router.
+        </p>
+    </div>
+
     {{-- Re-authenticate button (shown when internet test fails) --}}
     <div id="reauthWrap" style="display:none;">
         <a href="/activate-internet" class="btn btn-reauth">
@@ -209,41 +226,65 @@
 var SERVER = '{{ rtrim(config("app.url"), "/") }}';
 
 // ── Internet connectivity test ──────────────────────────────────────────────
-// We try to load a tiny image from a known external server.
-// If MikroTik is blocking internet, this fails → show re-auth button.
-function testInternet() {
-    var img = new Image();
-    var done = false;
-    var timeout = setTimeout(function() {
-        if (!done) { done = true; setOffline(); }
-    }, 5000);
+var retryCount = 0;
+var maxRetries = 20; // Try for ~60 seconds (3s intervals)
 
-    img.onload = function() {
-        if (!done) { done = true; clearTimeout(timeout); setOnline(); }
-    };
-    img.onerror = function() {
-        // Could be CORS block even though internet works, try fetch as backup
-        clearTimeout(timeout);
-        if (!done) { testViaFetch(); }
-    };
-    // Use a tiny 1px image from a reliable CDN
-    img.src = 'https://www.gstatic.com/generate_204?' + Date.now();
+function testInternet() {
+    // Use fetch to our own server's ping endpoint — always reachable if internet works
+    // We use a timestamp to prevent caching
+    fetch('https://www.google.com/favicon.ico?_=' + Date.now(), {
+        method: 'HEAD',
+        mode: 'no-cors',
+        cache: 'no-store'
+    })
+    .then(function() {
+        // fetch with no-cors resolves even on opaque responses — means internet works!
+        setOnline();
+    })
+    .catch(function() {
+        handleFailure();
+    });
 }
 
-function testViaFetch() {
-    fetch('https://www.gstatic.com/generate_204', { mode:'no-cors', cache:'no-store' })
-        .then(function() { setOnline(); })
-        .catch(function() { setOffline(); });
+function handleFailure() {
+    if (retryCount < maxRetries) {
+        retryCount++;
+        document.getElementById('netText').textContent = 'Waiting for router (Attempt ' + retryCount + ')...';
+        
+        // After 10 attempts, show diagnostics and the fallback nudge
+        if (retryCount == 10) {
+            document.getElementById('debugInfo').style.display = 'block';
+            if (document.getElementById('fallbackLogin')) document.getElementById('fallbackLogin').style.display = 'block';
+            universalLogin(); // Try silent nudge automatically
+        }
+        
+        setTimeout(testInternet, 3000); 
+    } else {
+        setOffline();
+    }
+}
+
+function universalLogin() {
+    console.log("PMWANI: Attempting Universal Login Nudge...");
+    var routerIp = '{{ env("MIKROTIK_HOST", "192.168.88.1") }}';
+    var username = '{{ $user->mobile ?? "" }}';
+    
+    // Nudge Method 1: Background ping to router IP (often triggers authorized=yes hosts)
+    var img = new Image();
+    img.src = "http://" + routerIp + "/login?username=" + username + "&password=" + username + "&_=" + Date.now();
+    
+    // Nudge Method 2: Ping common fallback URL
+    var img2 = new Image();
+    img2.src = "http://1.1.1.1/generate_204?_=" + Date.now();
 }
 
 function setOnline() {
     var el = document.getElementById('netStatus');
     el.className = 'net-status online';
     document.getElementById('netIcon').textContent = '✅';
-    document.getElementById('netText').textContent = 'Internet is working!';
-    // Hide re-auth if internet is working
-    var r = document.getElementById('reauthAlways');
-    if (r) r.style.display = 'none';
+    document.getElementById('netText').textContent = 'Internet is working! Enjoy!';
+    if (document.getElementById('reauthWrap')) document.getElementById('reauthWrap').style.display = 'none';
+    if (document.getElementById('reauthAlways')) document.getElementById('reauthAlways').style.display = 'none';
 }
 
 function setOffline() {
@@ -251,11 +292,10 @@ function setOffline() {
     el.className = 'net-status offline';
     document.getElementById('netIcon').textContent = '❌';
     document.getElementById('netText').textContent = 'No internet — tap "Fix Internet" below';
-    // Show re-auth button prominently
     document.getElementById('reauthWrap').style.display = 'block';
 }
 
-// Start test after 1s (give MikroTik handshake time to complete)
+// Start test after 1s
 setTimeout(testInternet, 1500);
 
 // ── Countdown timer ─────────────────────────────────────────────────────────

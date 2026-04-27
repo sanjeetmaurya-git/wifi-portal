@@ -3,81 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connecting to WiFi...</title>
+    <title>Connecting to PMWANI WiFi...</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
             min-height: 100vh; display: flex; align-items: center;
             justify-content: center; font-family: 'Outfit', sans-serif; color: white;
         }
         .card {
-            background: rgba(255,255,255,0.08); backdrop-filter: blur(20px);
-            border: 1px solid rgba(255,255,255,0.15); border-radius: 24px;
-            padding: 48px 36px; text-align: center; max-width: 380px; width: 92%;
+            background: rgba(255,255,255,0.06); backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.12); border-radius: 28px;
+            padding: 52px 40px; text-align: center; max-width: 400px; width: 92%;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.5);
         }
+        .logo { font-size: 48px; margin-bottom: 20px; }
+        .ring-wrap { position: relative; width: 80px; height: 80px; margin: 0 auto 28px; }
         .ring {
-            width: 72px; height: 72px; border: 5px solid rgba(255,255,255,0.1);
-            border-top: 5px solid #00d4aa; border-radius: 50%;
-            animation: spin 0.9s linear infinite; margin: 0 auto 28px;
+            width: 80px; height: 80px;
+            border: 4px solid rgba(255,255,255,0.08);
+            border-top: 4px solid #22c55e; border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+            position: absolute; top: 0; left: 0;
+        }
+        .ring2 {
+            width: 60px; height: 60px;
+            border: 4px solid rgba(255,255,255,0.05);
+            border-bottom: 4px solid #06b6d4; border-radius: 50%;
+            animation: spin 1.4s linear infinite reverse;
+            position: absolute; top: 10px; left: 10px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
-        .sub { color: rgba(255,255,255,0.55); font-size: 14px; margin-bottom: 12px; }
-        #fallback { display: none; }
-        .btn {
-            display: block; width: 100%; margin-top: 24px;
-            background: linear-gradient(135deg, #00d4aa, #0072ff);
-            color: white; border: none; padding: 18px; border-radius: 14px;
-            font-size: 18px; font-weight: 700; cursor: pointer; font-family: 'Outfit', sans-serif;
+        h1 { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+        .sub { color: rgba(255,255,255,0.5); font-size: 14px; margin-bottom: 28px; line-height: 1.6; }
+        .progress-bar-wrap {
+            background: rgba(255,255,255,0.08); border-radius: 100px;
+            height: 6px; margin-bottom: 18px; overflow: hidden;
         }
-        .btn:hover { opacity: 0.9; }
+        .progress-bar {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, #22c55e, #06b6d4);
+            border-radius: 100px; transition: width 0.8s ease;
+        }
+        .step-text { font-size: 13px; color: rgba(255,255,255,0.4); margin-bottom: 24px; min-height: 20px; }
+        .note { font-size: 11px; color: rgba(255,255,255,0.2); margin-top: 20px; line-height: 1.6; }
     </style>
 </head>
 <body>
 <div class="card">
-    <div id="phase1">
+    <div class="logo">📶</div>
+    <div class="ring-wrap">
         <div class="ring"></div>
-        <h1>Finishing Connection</h1>
-        <p class="sub">Authenticating with the bridge...</p>
+        <div class="ring2"></div>
     </div>
+    <h1 id="title">Connecting to PMWANI</h1>
+    <p class="sub" id="subtitle">Setting up your secure access...<br>Please wait, do not close this page.</p>
 
-    <div id="fallback">
-        <div style="font-size:56px;margin-bottom:20px;">🔌</div>
-        <h1>Almost Connected</h1>
-        <p class="sub">Your device needs a manual tap to finish.</p>
-        <button class="btn" onclick="document.getElementById('mikrotikForm').submit()">
-            ⚡ Tap to Finish
-        </button>
+    <div class="progress-bar-wrap">
+        <div class="progress-bar" id="bar"></div>
     </div>
+    <div class="step-text" id="stepText">Registering your device with router...</div>
+
+    <p class="note">
+        Your device will be connected automatically<br>in a few seconds.
+    </p>
 </div>
 
-{{-- MikroTik Handshake Form: MUST use POST for modern RouterOS versions --}}
-<form id="mikrotikForm" method="POST" action="{{ $link_login }}" style="display:none">
-    <input type="hidden" name="username" value="{{ $username }}">
-    <input type="hidden" name="password" value="{{ $password }}">
-    <input type="hidden" name="dst"      value="{{ $dst ?? url('/success') }}">
-</form>
-
 <script>
-(function() {
-    // Show fallback after 8s
-    setTimeout(function(){
-        document.getElementById('phase1').style.display = 'none';
-        document.getElementById('fallback').style.display = 'block';
-    }, 8000);
+// ── Progress bar steps ─────────────────────────────────────────────────────
+var steps = [
+    { at: 0,    pct: 8,   text: 'Registering your device...' },
+    { at: 1500, pct: 30,  text: 'Sending activation signal...' },
+    { at: 3500, pct: 55,  text: 'Router processing your request...' },
+    { at: 5500, pct: 78,  text: 'Almost ready...' },
+    { at: 7000, pct: 92,  text: 'Finalizing your connection...' },
+];
 
-    // Submit form with tiny delay
-    setTimeout(function(){
-        try {
-            document.getElementById('mikrotikForm').submit();
-        } catch(e) {
-            document.getElementById('phase1').style.display = 'none';
-            document.getElementById('fallback').style.display = 'block';
-        }
-    }, 800);
-})();
+var bar      = document.getElementById('bar');
+var stepText = document.getElementById('stepText');
+
+steps.forEach(function(s) {
+    setTimeout(function() {
+        bar.style.width = s.pct + '%';
+        stepText.textContent = s.text;
+    }, s.at);
+});
+
+// ── Redirect to success after 8 seconds ───────────────────────────────────
+// The MikroTik scheduler has already authorized this device while we waited.
+// No browser-to-router communication needed at all.
+setTimeout(function() {
+    bar.style.width = '100%';
+    stepText.textContent = 'Done! Opening your dashboard...';
+    document.getElementById('title').textContent = 'Connected!';
+    document.getElementById('subtitle').textContent = 'You now have internet access. Enjoy!';
+
+    setTimeout(function() {
+        window.location.href = '{{ url("/success") }}';
+    }, 600);
+}, 8000);
 </script>
 </body>
 </html>

@@ -6,9 +6,11 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\admin\PlanController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\UserController;
+use App\Models\WifiPlan;
 
 Route::get('/', function () {
-    return view('welcome');
+    $plans = WifiPlan::where('is_active', true)->get();
+    return view('welcome', compact('plans'));
 });
 
 
@@ -165,3 +167,34 @@ Route::get('/success', [AuthController::class, 'success'])->name('success');
 
 // ✅ KEY ROUTE: Fresh page that auto-POSTs to MikroTik after Razorpay payment
 Route::get('/activate-internet', [PaymentController::class, 'activateInternet']);
+
+// 📡 SAAS MODE: MikroTik Polling API (No Port Forwarding needed)
+Route::get('/api/router/fetch-commands', function (Illuminate\Http\Request $request) {
+    $routerId = $request->query('router_id');
+    
+    // Find pending commands. 
+    // If router_id is provided, look for that router OR commands with NULL router_id.
+    $commands = \App\Models\MikrotikCommand::where('status', 'pending')
+        ->where(function($query) use ($routerId) {
+            if ($routerId) {
+                $query->where('router_id', $routerId)->orWhereNull('router_id');
+            }
+        })
+        ->get();
+
+    if ($commands->isEmpty()) {
+        return "";
+    }
+
+    $script = "/log warning \"Server: Executing " . $commands->count() . " commands\";\r\n";
+    foreach ($commands as $cmd) {
+        $script .= $cmd->command . "\r\n";
+        $cmd->update([
+            'status' => 'executed',
+            'executed_at' => now(),
+            'attempts' => $cmd->attempts + 1
+        ]);
+    }
+
+    return response($script, 200)->header('Content-Type', 'text/plain');
+});

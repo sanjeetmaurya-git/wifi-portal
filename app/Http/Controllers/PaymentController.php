@@ -44,32 +44,11 @@ class PaymentController extends Controller
             return $this->activatePlan($user, $plan, $request, true);
         }
 
-        // 💳 PAID PLAN: Create Razorpay Order
-        $api = new Api(config('services.razorpay.key'), config('services.razorpay.secret'));
+        // 🛠️ TEMPORARY TESTING MODE: Skipping Razorpay
+        // This will directly activate the plan as if the payment was successful.
+        \Illuminate\Support\Facades\Log::info("[TestMode] Bypassing payment for User: {$user->mobile} and Plan: {$plan->name}");
 
-        $order = $api->order->create([
-            'receipt' => 'rcpt_' . $user->id . '_' . time(),
-            'amount' => (int) ($plan->price * 100),
-            'currency' => 'INR'
-        ]);
-
-        Transaction::create([
-            'user_id' => $user->id,
-            'wifi_plan_id' => $plan->id,
-            'order_id' => $order['id'],
-            'amount' => $plan->price,
-            'status' => 'created'
-        ]);
-
-        // Store everything needed for verification in the session
-        session([
-            'order_id' => $order['id'],
-            'plan_id' => $plan->id,
-            'amount' => $plan->price,
-            'user_id' => $user->id,  // ← store so we can recover if session expires
-        ]);
-
-        return redirect('/payment-page');
+        return $this->activatePlan($user, $plan, $request, false);
     }
 
     // ✅ Payment Success Callback from Razorpay JS (AJAX POST)
@@ -116,9 +95,9 @@ class PaymentController extends Controller
             // 🔄 SESSION RECOVERY: If session was lost, log the user back in!
             if (!session('mobile')) {
                 session([
-                    'mobile'     => $user->mobile,
-                    'user_id'    => $user->id,
-                    'mac'        => $user->mac_address ?? session('activate_mac'),
+                    'mobile' => $user->mobile,
+                    'user_id' => $user->id,
+                    'mac' => $user->mac_address ?? session('activate_mac'),
                     'link_login' => session('link_login') ?? "http://" . env('MIKROTIK_HOST', '192.168.88.1') . "/login"
                 ]);
                 Log::info("[SessionRecovery] User {$user->mobile} recovered after payment success.");
@@ -255,38 +234,38 @@ class PaymentController extends Controller
             // Queue the new plan to start after the current one expires
             $startAt = $activeSession->expires_at;
             WifiSession::create([
-                'user_id'           => $user->id,
-                'mac_address'       => $mac,
-                'ip_address'        => $ip,
-                'login_at'          => $startAt,
-                'duration_minutes'  => $plan->duration_minutes,
-                'expires_at'        => Carbon::parse($startAt)->addMinutes($plan->duration_minutes),
-                'wifi_plan_id'      => $plan->id,
-                'is_free'           => $isFree,
+                'user_id' => $user->id,
+                'mac_address' => $mac,
+                'ip_address' => $ip,
+                'login_at' => $startAt,
+                'duration_minutes' => $plan->duration_minutes,
+                'expires_at' => Carbon::parse($startAt)->addMinutes($plan->duration_minutes),
+                'wifi_plan_id' => $plan->id,
+                'is_free' => $isFree,
             ]);
             Log::info('[Plan] Queued ' . $plan->plan_type . ' plan for ' . $user->mobile . '. Starts at: ' . $startAt);
 
             session(['mobile' => $user->mobile]);
-            return ($request->expectsJson() || $request->isXmlHttpRequest()) 
+            return ($request->expectsJson() || $request->isXmlHttpRequest())
                 ? response()->json(['redirect' => url('/success?queued=1')])
                 : redirect('/success?queued=1');
         }
 
         // ── Activate immediately ───────────────
         WifiSession::create([
-            'user_id'           => $user->id,
-            'mac_address'       => $mac,
-            'ip_address'        => $ip,
-            'login_at'          => now(),
-            'duration_minutes'  => $plan->duration_minutes,
-            'expires_at'        => now()->addMinutes($plan->duration_minutes),
-            'wifi_plan_id'      => $plan->id,
-            'is_free'           => $isFree,
+            'user_id' => $user->id,
+            'mac_address' => $mac,
+            'ip_address' => $ip,
+            'login_at' => now(),
+            'duration_minutes' => $plan->duration_minutes,
+            'expires_at' => now()->addMinutes($plan->duration_minutes),
+            'wifi_plan_id' => $plan->id,
+            'is_free' => $isFree,
         ]);
 
         // ── Push limits to MikroTik with 5% Buffer ──────────────────────────
         try {
-            $mikrotik    = new MikrotikService();
+            $mikrotik = new MikrotikService();
             $profileName = $plan->profile_name ?: 'plan_' . $plan->id;
 
             $mbLimit = 0;
@@ -301,17 +280,18 @@ class PaymentController extends Controller
             $bytesLimit = $mbLimit > 0 ? ceil($mbLimit * 1.05) . 'M' : null;
 
             $uptimeLimit = $plan->duration_minutes . 'm';
-            $rateLimit   = ($plan->upload_limit && $plan->download_limit)
+            $rateLimit = ($plan->upload_limit && $plan->download_limit)
                 ? "{$plan->upload_limit}/{$plan->download_limit}"
                 : null;
 
-            $mikrotik->addHotspotUser(
-                $user->mobile, $user->mobile,
-                $profileName, $uptimeLimit, $bytesLimit, $rateLimit, $mac
-            );
-            Log::info("[MikroTik] Plan pushed for {$user->mobile} (with 5% buffer: $bytesLimit)");
+            // ⚡ RADIUS SYNC: Sync both Mobile and MAC
+            $radius = new RadiusService();
+            $radius->syncUser($user->mobile, $user->mobile, $plan);
+            $radius->syncMac($mac, $plan);
+
+            Log::info("[RADIUS] Plan synced for $user->mobile and MAC $mac");
         } catch (\Exception $e) {
-            Log::error('[MikroTik] Plan push failed for ' . $user->mobile . ': ' . $e->getMessage());
+            Log::error('[RADIUS] Sync failed: ' . $e->getMessage());
         }
 
         return $this->buildHandshakeResponse($user, $request);
@@ -333,60 +313,60 @@ class PaymentController extends Controller
     {
         $rawLinkLogin = session('link_login');
         $mac = session('mac') ?? $user->mac_address ?? '';
+        $mobile = $user->mobile;
 
-        // Always persist user in session for /success and /activate-internet
-        session(['mobile' => $user->mobile]);
+        session(['mobile' => $mobile]);
 
-        if (!$rawLinkLogin) {
-            // No MikroTik link — portal accessed directly, not via router redirect
-            if ($request->expectsJson() || $request->isXmlHttpRequest()) {
-                return response()->json(['redirect' => url('/success')]);
-            }
-            return redirect('/success');
-        }
-
-        // Replace DNS hostname with actual router IP for universal device compatibility
+        // ── Normalise the router URL ──────────────────────────────────────────
         $routerIp = env('MIKROTIK_HOST', '192.168.88.1');
-        $linkLogin = str_replace(['wifi.local', 'mywifi.net'], $routerIp, $rawLinkLogin);
+        $linkLogin = $rawLinkLogin
+            ? str_replace(['wifi.local', 'wifi.login', 'mywifi.net', 'portal.wifi'], $routerIp, $rawLinkLogin)
+            : null;
 
+        $hasLinkLogin = !empty($linkLogin) && str_contains($linkLogin, 'http');
+
+        // ── AJAX response (Razorpay JS callback) ─────────────────────────────
         if ($request->expectsJson() || $request->isXmlHttpRequest()) {
-            // ✅ AJAX (Razorpay paid plan):
-            // Store connect params in session, tell JS to navigate to /activate-internet.
-            // This triggers a fresh full-page load → IIFE auto-submits form reliably.
-            session([
-                'activate_link_login' => $linkLogin,
-                'activate_mac' => $mac,
-            ]);
-            return response()->json(['redirect' => url('/activate-internet')]);
+            if ($hasLinkLogin) {
+                session(['activate_link_login' => $linkLogin, 'activate_mac' => $mac]);
+                return response()->json(['redirect' => url('/activate-internet')]);
+            }
+            return response()->json(['redirect' => url('/success')]);
         }
 
-        // Free plan (normal HTML form POST) — return the view directly
-        return view('mikrotik-login', [
-            'link_login' => $linkLogin,
-            'username' => $user->mobile,
-            'password' => $user->mobile,
-            'mac' => $mac,
-            'dst' => url('/success'),
-        ]);
+        // ── Regular browser request ───────────────────────────────────────────
+        // If we have the router URL: show connecting screen (12s wait → GET login)
+        if ($hasLinkLogin) {
+            return view('mikrotik-login', [
+                'link_login' => $linkLogin,
+                'username' => $mobile,
+                'password' => $mobile,
+                'mac' => $mac,
+                'dst' => url('/success'),
+            ]);
+        }
+
+        // No router URL (user opened site directly) → just go to success
+        return redirect('/success');
     }
 
-    // ✅ GET /activate-internet — Fresh page that auto-POSTs to MikroTik
+    // ✅ GET /activate-internet — Shows connecting screen → GET login to router
     public function activateInternet(Request $request)
     {
         // 🔍 SESSION RECOVERY
         $mobile = session('mobile');
-        $mac    = session('activate_mac') ?? session('mac') ?? $request->ip();
+        $mac = session('activate_mac') ?? session('mac') ?? '';
+        $linkLogin = session('activate_link_login') ?? session('link_login');
 
         if (!$mobile) {
-            // Try to find user by MAC or IP from database
             $user = WifiUser::where('mac_address', $mac)
                 ->orWhere('ip_address', $request->ip())
                 ->latest()
                 ->first();
 
-            if ($user && $mobile = $user->mobile) {
+            if ($user) {
+                $mobile = $user->mobile;
                 session(['mobile' => $mobile, 'user_id' => $user->id, 'mac' => $user->mac_address]);
-                Log::info("[HandshakeRecovery] Found disconnected session for $mobile via MAC/IP");
             } else {
                 return redirect('/login')->with('error', 'Please login to finish connection.');
             }
@@ -394,30 +374,50 @@ class PaymentController extends Controller
             $user = WifiUser::where('mobile', $mobile)->first();
         }
 
-        if (!$user) return redirect('/login');
+        if (!$user)
+            return redirect('/login');
 
-        // 🔗 LINK RECOVERY: Use configured host as fallback
-        $routerHost = env('MIKROTIK_HOST', '192.168.88.1');
-        $hotspotIp  = env('MIKROTIK_HOTSPOT_IP', $routerHost); // Fallback to host if not set
-        
-        $linkLogin = session('activate_link_login') ?? session('link_login') ?? "http://{$hotspotIp}/login";
+        // Re-enqueue the activation command for the router
+        try {
+            $mikrotik = new MikrotikService();
+            $activeSession = WifiSession::where('user_id', $user->id)
+                ->where('expires_at', '>', now())
+                ->whereNull('logout_at')
+                ->latest()->first();
 
-        // Double-check DNS replacement with the CORRECT Hotspot IP
-        $finalLoginUrl = str_replace(
-            ['wifi.local', 'mywifi.net', 'portal.wifi', $routerHost], 
-            $hotspotIp, 
-            $linkLogin
-        );
+            if ($activeSession && $activeSession->plan) {
+                $plan = $activeSession->plan;
+                $mbLimit = $plan->isDailyPlan() ? $plan->daily_data_mb : $plan->limit_bytes;
+                $bytesLimit = $mbLimit > 0 ? ceil($mbLimit * 1.05) . 'M' : null;
 
-        Log::info("[Handshake] Launching for $mobile at $finalLoginUrl (Router API: $routerHost)");
+                // ⚡ RADIUS RE-SYNC
+                $radius = new RadiusService();
+                $radius->syncUser($user->mobile, $user->mobile, $plan);
+                $radius->syncMac($mac, $plan);
+            }
 
-        return view('mikrotik-login', [
-            'link_login' => $finalLoginUrl,
-            'username'   => $user->mobile,
-            'password'   => $user->mobile,
-            'mac'        => $mac,
-            'dst'        => url('/success'),
-        ]);
+        } catch (\Exception $e) {
+            Log::warning("[FixInternet] Sync failed: " . $e->getMessage());
+        }
+
+        // If we have the router's URL, show the 12-second connecting screen
+        $routerIp = env('MIKROTIK_HOST', '192.168.88.1');
+        $cleanLink = $linkLogin
+            ? str_replace(['wifi.local', 'wifi.login', 'mywifi.net', 'portal.wifi'], $routerIp, $linkLogin)
+            : null;
+
+        if (!empty($cleanLink) && str_contains($cleanLink, 'http')) {
+            return view('mikrotik-login', [
+                'link_login' => $cleanLink,
+                'username' => $user->mobile,
+                'password' => $user->mobile,
+                'mac' => $mac,
+                'dst' => url('/success'),
+            ]);
+        }
+
+        // No router URL: just go to success (IP binding handles it)
+        return redirect('/success')->with('success', 'Activation signal sent!');
     }
 
     public function paymentPage()

@@ -40,4 +40,9 @@ return [
         'secret' => env('RAZORPAY_SECRET'),
     ],
 
+    'mikrotik' => [
+        'host' => env('MIKROTIK_HOST', '192.168.88.1'),
+        'connected' => env('MIKROTIK_CONNECTED', true),
+    ],
+
 ];
